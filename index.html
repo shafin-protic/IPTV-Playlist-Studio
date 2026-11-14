@@ -1,0 +1,2800 @@
+<!DOCTYPE html>
+<html lang="en" class="oled">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StreamDeck M3U — IPTV Playlist Manager</title>
+  <!-- Modern Plain Vector Favicon -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none'%3E%3Crect width='32' height='32' rx='8' fill='%23050505'/%3E%3Crect x='1' y='1' width='30' height='30' rx='7' stroke='%2310b981' stroke-opacity='0.4' stroke-width='2'/%3E%3Cpath d='M11 10L23 16L11 22V10Z' fill='%2310b981'/%3E%3C/svg%3E" />
+
+  <!-- Inter Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- HLS.js for instant .m3u8 preview -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <!-- Lucide Uniform Clean Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            oled: {
+              bg: '#000000',
+              surface: '#080808',
+              card: '#0f0f0f',
+              hover: '#161616',
+              border: '#1e1e1e',
+              accent: '#10b981'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    :root {
+      --bg-main: #000000;
+      --bg-surface: #070707;
+      --bg-card: #0e0e0e;
+      --bg-hover: #171717;
+      --border-color: #1c1c1c;
+      --text-primary: #f4f4f5;
+      --text-secondary: #a1a1aa;
+      --text-muted: #52525b;
+      --accent: #10b981;
+    }
+
+    html.slate-theme {
+      --bg-main: #090d16;
+      --bg-surface: #0f172a;
+      --bg-card: #1e293b;
+      --bg-hover: #334155;
+      --border-color: #26334d;
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+    }
+
+    html.light-theme {
+      --bg-main: #f8fafc;
+      --bg-surface: #ffffff;
+      --bg-card: #f1f5f9;
+      --bg-hover: #e2e8f0;
+      --border-color: #e2e8f0;
+      --text-primary: #0f172a;
+      --text-secondary: #475569;
+      --text-muted: #94a3b8;
+    }
+
+    body {
+      background-color: var(--bg-main);
+      color: var(--text-primary);
+      font-family: 'Inter', sans-serif;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    .theme-surface { background-color: var(--bg-surface); }
+    .theme-card { background-color: var(--bg-card); }
+    .theme-hover:hover { background-color: var(--bg-hover); }
+    .theme-border { border-color: var(--border-color); }
+    .theme-text-secondary { color: var(--text-secondary); }
+    .theme-text-muted { color: var(--text-muted); }
+
+    /* Custom ultra-thin scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #27272a;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #3f3f46;
+    }
+
+    /* Subtle pulse for live badge */
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.92); }
+    }
+    .live-dot {
+      animation: pulse-dot 2s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="h-screen w-screen flex flex-col antialiased">
+
+  <!-- TOP NAVIGATION BAR -->
+  <header class="h-14 theme-surface border-b theme-border px-4 flex items-center justify-between shrink-0 z-20">
+    <!-- Brand & Mobile Sidebar Button -->
+    <div class="flex items-center gap-3">
+      <button id="mobileMenuBtn" onclick="toggleMobileSidebar()" class="lg:hidden p-2 rounded-lg theme-hover theme-text-secondary">
+        <i data-lucide="menu" class="w-5 h-5"></i>
+      </button>
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-sm">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M5 3l14 9-14 9V3z"/>
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-semibold tracking-tight text-sm">StreamDeck</span>
+            <span class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">M3U Studio</span>
+          </div>
+          <p class="text-[11px] theme-text-muted hidden sm:block">High-Performance IPTV Playlist Organizer</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Search Input -->
+    <div class="flex-1 max-w-md mx-4">
+      <div class="relative flex items-center">
+        <i data-lucide="search" class="w-4 h-4 theme-text-muted absolute left-3 pointer-events-none"></i>
+        <input
+          id="searchInput"
+          type="text"
+          placeholder="Search channels, groups, or stream URL..."
+          oninput="handleSearch(this.value)"
+          class="w-full pl-9 pr-8 py-1.5 text-xs rounded-lg theme-card border theme-border focus:outline-none focus:border-emerald-500/60 transition"
+        />
+        <button id="clearSearchBtn" onclick="clearSearch()" class="hidden absolute right-2.5 theme-text-muted hover:text-white">
+          <i data-lucide="x" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Quick Action Buttons -->
+    <div class="flex items-center gap-1.5 sm:gap-2">
+      <!-- Import M3U -->
+      <button onclick="openImportModal()" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium theme-card border theme-border theme-hover transition" title="Import M3U/M3U8">
+        <i data-lucide="folder-plus" class="w-3.5 h-3.5 text-emerald-400"></i>
+        <span class="hidden md:inline">Import</span>
+      </button>
+
+      <!-- Add Channel -->
+      <button onclick="openChannelModal()" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium theme-card border theme-border theme-hover transition" title="Add Channel">
+        <i data-lucide="plus-circle" class="w-3.5 h-3.5 text-emerald-400"></i>
+        <span class="hidden md:inline">Add Channel</span>
+      </button>
+
+      <!-- Duplicate Scanner -->
+      <button onclick="setViewMode('duplicates')" id="topDupBtn" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium theme-card border theme-border theme-hover transition" title="Scan Duplicate Channels">
+        <i data-lucide="scan-search" class="w-3.5 h-3.5 text-amber-400"></i>
+        <span class="hidden md:inline">Duplicates</span>
+        <span id="headerDupBadge" class="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-amber-500/15 text-amber-400">0</span>
+      </button>
+
+      <!-- Export M3U -->
+      <button onclick="openExportModal()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500 hover:bg-emerald-400 text-black font-semibold transition shadow-sm" title="Export Final .m3u">
+        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+        <span class="hidden sm:inline">Export .M3U</span>
+      </button>
+
+      <div class="h-4 w-[1px] theme-border bg-zinc-800 mx-0.5"></div>
+
+      <!-- Theme Switcher (OLED / Slate / Light) -->
+      <button onclick="cycleTheme()" id="themeBtn" class="p-1.5 rounded-lg theme-card border theme-border theme-hover transition" title="Switch Theme (OLED / Slate / Light)">
+        <i data-lucide="moon-star" class="w-4 h-4 text-emerald-400"></i>
+      </button>
+
+      <!-- About Credit Modal -->
+      <button onclick="openAboutModal()" class="p-1.5 rounded-lg theme-card border theme-border theme-hover transition" title="About & Creator Credits">
+        <i data-lucide="info" class="w-4 h-4 theme-text-secondary"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE -->
+  <div class="flex-1 flex overflow-hidden relative">
+
+    <!-- SIDEBAR OVERLAY FOR MOBILE -->
+    <div id="sidebarBackdrop" onclick="toggleMobileSidebar()" class="fixed inset-0 bg-black/70 z-20 hidden lg:hidden"></div>
+
+    <!-- LEFT SIDEBAR: Playlists, Views & Groups -->
+    <aside id="sidebar" class="w-72 theme-surface border-r theme-border flex flex-col shrink-0 select-none fixed lg:static inset-y-0 left-0 z-30 transform -translate-x-full lg:translate-x-0 transition-transform duration-200 ease-out">
+      
+      <!-- 1. Playlists Section -->
+      <div class="p-3 border-b theme-border">
+        <div class="flex items-center justify-between mb-2 px-1">
+          <span class="text-[11px] font-semibold uppercase tracking-wider theme-text-muted flex items-center gap-1.5">
+            <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+            Playlists
+          </span>
+          <div class="flex items-center gap-1">
+            <button onclick="openMergeModal()" class="text-[11px] px-1.5 py-0.5 rounded theme-card border theme-border theme-hover theme-text-secondary flex items-center gap-1" title="Merge Playlists">
+              <i data-lucide="git-merge" class="w-3 h-3 text-emerald-400"></i>
+              <span>Merge</span>
+            </button>
+            <button onclick="openImportModal()" class="p-1 rounded theme-card border theme-border theme-hover theme-text-secondary" title="Add/Import Playlist">
+              <i data-lucide="plus" class="w-3 h-3"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Playlist Items Container -->
+        <div id="playlistList" class="space-y-1 max-h-40 overflow-y-auto pr-0.5"></div>
+      </div>
+
+      <!-- 2. System Views (All Channels, Duplicates, Trash) -->
+      <div class="p-3 border-b theme-border space-y-1">
+        <div class="px-1 mb-1.5">
+          <span class="text-[11px] font-semibold uppercase tracking-wider theme-text-muted">Navigation</span>
+        </div>
+
+        <!-- All Channels in Active Playlist -->
+        <button id="navAllBtn" onclick="setViewMode('all')" class="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium transition">
+          <span class="flex items-center gap-2">
+            <i data-lucide="tv" class="w-3.5 h-3.5 text-emerald-400"></i>
+            <span>All Channels</span>
+          </span>
+          <span id="navAllCount" class="text-[11px] font-mono px-1.5 py-0.5 rounded theme-card border theme-border">0</span>
+        </button>
+
+        <!-- Duplicate Scanner View -->
+        <button id="navDupBtn" onclick="setViewMode('duplicates')" class="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium transition">
+          <span class="flex items-center gap-2">
+            <i data-lucide="copy-check" class="w-3.5 h-3.5 text-amber-400"></i>
+            <span>Duplicate Scanner</span>
+          </span>
+          <span id="navDupCount" class="text-[11px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">0</span>
+        </button>
+
+        <!-- Trash Bin View -->
+        <button id="navTrashBtn" onclick="setViewMode('trash')" class="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium transition">
+          <span class="flex items-center gap-2">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5 text-rose-400"></i>
+            <span>Trash Bin</span>
+          </span>
+          <span id="navTrashCount" class="text-[11px] font-mono px-1.5 py-0.5 rounded theme-card border theme-border">0</span>
+        </button>
+      </div>
+
+      <!-- 3. Groups in Active Playlist -->
+      <div class="flex-1 flex flex-col min-h-0 p-3">
+        <div class="flex items-center justify-between mb-2 px-1">
+          <span class="text-[11px] font-semibold uppercase tracking-wider theme-text-muted flex items-center gap-1.5">
+            <i data-lucide="folder" class="w-3.5 h-3.5"></i>
+            Groups
+          </span>
+          <button onclick="openNewGroupModal()" class="text-[11px] px-1.5 py-0.5 rounded theme-card border theme-border theme-hover theme-text-secondary flex items-center gap-1" title="Create New Group">
+            <i data-lucide="folder-plus" class="w-3 h-3 text-emerald-400"></i>
+            <span>New Group</span>
+          </button>
+        </div>
+
+        <!-- Group List -->
+        <div id="groupList" class="flex-1 overflow-y-auto space-y-1 pr-0.5"></div>
+      </div>
+
+      <!-- Sidebar Footer: Credit & Status -->
+      <div class="p-3 border-t theme-border flex items-center justify-between text-[11px] theme-text-muted">
+        <button onclick="openAboutModal()" class="hover:text-emerald-400 transition flex items-center gap-1.5 truncate">
+          <i data-lucide="code-2" class="w-3.5 h-3.5 text-emerald-400 shrink-0"></i>
+          <span class="truncate">Shafin Al Asad Protic</span>
+        </button>
+        <span id="themeBadgeLabel" class="font-mono text-[10px] px-1.5 py-0.5 rounded theme-card border theme-border">OLED</span>
+      </div>
+    </aside>
+
+    <!-- CENTER CONTENT AREA -->
+    <main class="flex-1 flex flex-col min-w-0 overflow-hidden">
+      
+      <!-- CONTEXT HEADER & TOOLBAR -->
+      <div class="px-4 py-3 border-b theme-border theme-surface flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <!-- View Title & Breadcrumb -->
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div id="currentViewIcon" class="w-8 h-8 rounded-lg theme-card border theme-border flex items-center justify-center text-emerald-400 shrink-0">
+            <i data-lucide="tv" class="w-4 h-4"></i>
+          </div>
+          <div class="min-w-0">
+            <div class="flex items-center gap-2">
+              <h1 id="currentViewTitle" class="font-semibold text-sm truncate">All Channels</h1>
+              <span id="currentViewCount" class="text-[11px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">0 channels</span>
+            </div>
+            <p id="currentViewSubtitle" class="text-[11px] theme-text-muted truncate">Active Playlist</p>
+          </div>
+        </div>
+
+        <!-- Sorting & Display Controls -->
+        <div class="flex items-center gap-2 flex-wrap">
+          <!-- Select All Checkbox -->
+          <label class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg theme-card border theme-border text-xs cursor-pointer theme-hover">
+            <input id="selectAllCheckbox" type="checkbox" onchange="toggleSelectAll(this.checked)" class="rounded bg-black border-zinc-700 text-emerald-500 focus:ring-0 cursor-pointer" />
+            <span class="theme-text-secondary">Select All</span>
+          </label>
+
+          <!-- Sort Selector -->
+          <div class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg theme-card border theme-border text-xs">
+            <i data-lucide="arrow-up-down" class="w-3.5 h-3.5 theme-text-muted"></i>
+            <select id="sortSelect" onchange="handleSortChange(this.value)" class="bg-transparent focus:outline-none text-xs cursor-pointer">
+              <option value="custom" class="bg-zinc-900 text-white">Order: Custom / Default</option>
+              <option value="name-asc" class="bg-zinc-900 text-white">Sort: Name (A → Z)</option>
+              <option value="name-desc" class="bg-zinc-900 text-white">Sort: Name (Z → A)</option>
+              <option value="group-asc" class="bg-zinc-900 text-white">Sort: Group (A → Z)</option>
+              <option value="group-desc" class="bg-zinc-900 text-white">Sort: Group (Z → A)</option>
+            </select>
+          </div>
+
+          <!-- Apply Permanent Sort Button -->
+          <button onclick="permanentlyApplySort()" class="px-2.5 py-1.5 rounded-lg theme-card border theme-border theme-hover text-xs theme-text-secondary flex items-center gap-1" title="Save current sort order permanently to playlist">
+            <i data-lucide="check-check" class="w-3.5 h-3.5 text-emerald-400"></i>
+            <span class="hidden xl:inline">Save Order</span>
+          </button>
+
+          <!-- Layout Toggle (List vs Grid) -->
+          <div class="flex items-center rounded-lg theme-card border theme-border p-0.5">
+            <button id="layoutListBtn" onclick="setLayoutMode('list')" class="p-1 rounded text-emerald-400 bg-zinc-800/80" title="Compact List View">
+              <i data-lucide="list" class="w-3.5 h-3.5"></i>
+            </button>
+            <button id="layoutGridBtn" onclick="setLayoutMode('grid')" class="p-1 rounded theme-text-muted" title="Card Grid View">
+              <i data-lucide="layout-grid" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- DUPLICATE SCANNER FILTER BAR (Only visible in Duplicate View) -->
+      <div id="duplicateToolbar" class="hidden px-4 py-2.5 bg-amber-500/5 border-b border-amber-500/20 flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="text-xs font-medium text-amber-300 flex items-center gap-1.5">
+            <i data-lucide="filter" class="w-3.5 h-3.5"></i>
+            Match Duplicates By:
+          </span>
+          <div class="flex items-center gap-1 p-0.5 rounded-lg theme-card border theme-border text-xs">
+            <button id="dupModeEither" onclick="setDuplicateCriteria('either')" class="px-2.5 py-1 rounded-md font-medium transition">Name OR Link</button>
+            <button id="dupModeName" onclick="setDuplicateCriteria('name')" class="px-2.5 py-1 rounded-md font-medium transition">Channel Name</button>
+            <button id="dupModeUrl" onclick="setDuplicateCriteria('url')" class="px-2.5 py-1 rounded-md font-medium transition">Channel Link</button>
+            <button id="dupModeBoth" onclick="setDuplicateCriteria('both')" class="px-2.5 py-1 rounded-md font-medium transition">Both Exact</button>
+          </div>
+
+          <label class="flex items-center gap-1.5 text-xs theme-text-secondary ml-2 cursor-pointer">
+            <input id="dupScopeAllPlaylists" type="checkbox" onchange="toggleDuplicateScope(this.checked)" class="rounded bg-black border-zinc-700 text-amber-500 focus:ring-0" />
+            <span>Scan across all playlists</span>
+          </label>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button onclick="removeAllDuplicatesKeepFirst()" class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-semibold text-xs flex items-center gap-1.5 transition shadow-sm">
+            <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+            <span>Remove All Duplicates (Keep 1st)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- TRASH TOOLBAR (Only visible in Trash View) -->
+      <div id="trashToolbar" class="hidden px-4 py-2.5 bg-rose-500/5 border-b border-rose-500/20 flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <div class="flex items-center gap-2 text-xs text-rose-300">
+          <i data-lucide="trash-2" class="w-4 h-4"></i>
+          <span>Channels in Trash are excluded from M3U exports. Restore them anytime or empty trash permanently.</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="restoreAllTrash()" class="px-2.5 py-1.5 rounded-lg theme-card border theme-border theme-hover text-xs text-emerald-400 flex items-center gap-1.5">
+            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+            <span>Restore All</span>
+          </button>
+          <button onclick="emptyTrashPermanently()" class="px-2.5 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-1.5">
+            <i data-lucide="flame" class="w-3.5 h-3.5"></i>
+            <span>Empty Trash</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- MULTI-SELECT BULK ACTION BAR -->
+      <div id="bulkActionBar" class="hidden px-4 py-2 bg-emerald-500/10 border-b border-emerald-500/30 flex flex-wrap items-center justify-between gap-2 shrink-0">
+        <div class="flex items-center gap-2 text-xs">
+          <span id="selectedCountBadge" class="px-2 py-0.5 rounded bg-emerald-500 text-black font-semibold font-mono">0 selected</span>
+          <button onclick="clearSelection()" class="text-xs theme-text-secondary hover:underline">Clear</button>
+        </div>
+        <div class="flex items-center gap-1.5 flex-wrap">
+          <button onclick="openBulkTransferModal('move-group')" class="px-2.5 py-1 rounded-md theme-card border theme-border theme-hover text-xs flex items-center gap-1.5">
+            <i data-lucide="folder-input" class="w-3.5 h-3.5 text-emerald-400"></i>
+            <span>Move to Group</span>
+          </button>
+          <button onclick="openBulkTransferModal('copy-group')" class="px-2.5 py-1 rounded-md theme-card border theme-border theme-hover text-xs flex items-center gap-1.5">
+            <i data-lucide="copy" class="w-3.5 h-3.5 text-sky-400"></i>
+            <span>Copy to Group</span>
+          </button>
+          <button onclick="openBulkTransferModal('move-playlist')" class="px-2.5 py-1 rounded-md theme-card border theme-border theme-hover text-xs flex items-center gap-1.5">
+            <i data-lucide="send" class="w-3.5 h-3.5 text-purple-400"></i>
+            <span>Move/Copy to Playlist</span>
+          </button>
+          <button onclick="bulkDeleteSelected()" class="px-2.5 py-1 rounded-md bg-rose-500/15 border border-rose-500/30 hover:bg-rose-500/25 text-rose-300 text-xs flex items-center gap-1.5">
+            <i data-lucide="trash" class="w-3.5 h-3.5"></i>
+            <span id="bulkDeleteBtnLabel">Move to Trash</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- CHANNEL LIST / GRID CONTAINER -->
+      <div id="channelContainer" class="flex-1 overflow-y-auto p-4"></div>
+
+    </main>
+
+    <!-- INSTANT MINI PLAYER (Floating / Docked Preview Space) -->
+    <div id="miniPlayerPanel" class="hidden fixed bottom-4 right-4 z-40 w-80 sm:w-96 rounded-2xl theme-surface border theme-border shadow-2xl overflow-hidden transition-all duration-200">
+      <!-- Player Header -->
+      <div class="px-3 py-2 border-b theme-border flex items-center justify-between bg-black/60">
+        <div class="flex items-center gap-2 min-w-0">
+          <span id="playerStatusDot" class="w-2 h-2 rounded-full bg-emerald-400 live-dot shrink-0"></span>
+          <div class="min-w-0">
+            <h4 id="playerChannelTitle" class="text-xs font-semibold truncate">Channel Preview</h4>
+            <p id="playerChannelGroup" class="text-[10px] theme-text-muted truncate">Live Stream</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-1 shrink-0">
+          <button onclick="copyCurrentPlayerUrl()" class="p-1.5 rounded-lg theme-hover theme-text-secondary" title="Copy Stream Link">
+            <i data-lucide="link" class="w-3.5 h-3.5"></i>
+          </button>
+          <button onclick="toggleMiniPlayerSize()" class="p-1.5 rounded-lg theme-hover theme-text-secondary" title="Expand / Compact Player">
+            <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i>
+          </button>
+          <button onclick="closeMiniPlayer()" class="p-1.5 rounded-lg hover:bg-rose-500/20 text-rose-400" title="Close Mini Player">
+            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Video Element Container -->
+      <div class="relative bg-black aspect-video flex items-center justify-center overflow-hidden">
+        <video id="hlsVideo" class="w-full h-full object-contain" controls playsinline autoplay></video>
+        
+        <!-- Stream Loading / Error Overlay -->
+        <div id="playerOverlay" class="hidden absolute inset-0 bg-black/85 p-4 flex flex-col items-center justify-center text-center">
+          <i id="playerOverlayIcon" data-lucide="loader" class="w-7 h-7 text-emerald-400 animate-spin mb-2"></i>
+          <p id="playerOverlayText" class="text-xs font-medium text-zinc-200">Connecting to stream...</p>
+          <p id="playerOverlaySub" class="text-[11px] theme-text-muted mt-1 max-w-xs"></p>
+        </div>
+      </div>
+
+      <!-- Stream Footer Info -->
+      <div class="px-3 py-2 border-t theme-border flex items-center justify-between text-[11px] theme-text-muted bg-black/40">
+        <span id="playerUrlPreview" class="font-mono truncate max-w-[210px]">https://...</span>
+        <span id="playerCodecBadge" class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">HLS M3U8</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ========================================================= -->
+  <!-- MODALS (Import, Add/Edit Channel, Bulk Move, Merge, Export, About) -->
+  <!-- ========================================================= -->
+
+  <!-- 1. IMPORT M3U MODAL -->
+  <div id="importModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="w-full max-w-xl rounded-2xl theme-surface border theme-border shadow-2xl overflow-hidden">
+      <div class="px-5 py-4 border-b theme-border flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i data-lucide="folder-plus" class="w-4 h-4 text-emerald-400"></i>
+          <h3 class="font-semibold text-sm">Import M3U / M3U8 Playlist</h3>
+        </div>
+        <button onclick="closeModal('importModal')" class="p-1 rounded-lg theme-hover theme-text-muted">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+        <!-- Target Mode: New Playlist or Append to Current -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs theme-text-secondary mb-1">Import Destination</label>
+            <select id="importTargetMode" onchange="toggleImportPlaylistNameInput()" class="w-full px-3 py-2 rounded-lg theme-card border theme-border text-xs focus:outline-none focus:border-emerald-500">
+              <option value="new" class="bg-zinc-900">Create Separate Playlist(s)</option>
+              <option value="append" class="bg-zinc-900">Append to Active Playlist</option>
+            </select>
+          </div>
+          <div id="importCustomNameWrapper">
+            <label class="block text-xs theme-text-secondary mb-1">Playlist Name (Optional)</label>
+            <input id="importPlaylistName" type="text" placeholder="e.g. Sports HD List" class="w-full px-3 py-2 rounded-lg theme-card border theme-border text-xs focus:outline-none focus:border-emerald-500" />
+          </div>
+        </div>
+
+        <!-- Upload Multiple Files (.m3u / .m3u8) -->
+        <div>
+          <label class="block text-xs theme-text-secondary mb-1.5">1. Select Local `.m3u` or `.m3u8` Files (Multiple supported)</label>
+          <label class="flex flex-col items-center justify-center border-2 border-dashed theme-border rounded-xl p-5 cursor-pointer theme-hover transition text-center">
+            <i data-lucide="upload-cloud" class="w-7 h-7 text-emerald-400 mb-1.5"></i>
+            <span class="text-xs font-medium">Click to browse `.m3u` or `.m3u8` files</span>
+            <span id="importFileNames" class="text-[11px] theme-text-muted mt-1">Each file can be imported separately</span>
+            <input id="importFileInput" type="file" accept=".m3u,.m3u8,.txt" multiple onchange="handleFileInputSelection(this)" class="hidden" />
+          </label>
+        </div>
+
+        <!-- Import via Remote M3U URL -->
+        <div>
+          <label class="block text-xs theme-text-secondary mb-1">2. Or Fetch From Remote M3U URL</label>
+          <div class="flex gap-2">
+            <input id="importUrlInput" type="url" placeholder="https://example.com/playlist.m3u" class="flex-1 px-3 py-2 rounded-lg theme-card border theme-border text-xs font-mono focus:outline-none focus:border-emerald-500" />
+            <button onclick="fetchPlaylistFromUrl()" class="px-3 py-2 rounded-lg theme-card border theme-border theme-hover text-xs font-medium text-emerald-400 shrink-0">
+              Fetch URL
+            </button>
+          </div>
+        </div>
+
+        <!-- Paste Raw M3U Content -->
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label class="text-xs theme-text-secondary">3. Or Paste Raw `#EXTM3U` Content</label>
+            <button onclick="loadDemoM3UText()" class="text-[11px] text-emerald-400 hover:underline">Insert sample M3U snippet</button>
+          </div>
+          <textarea id="importRawText" rows="5" placeholder="#EXTM3U&#10;#EXTINF:-1 tvg-logo=&quot;...&quot; group-title=&quot;News&quot;,BBC World News&#10;https://stream.example.com/live.m3u8" class="w-full p-3 rounded-lg theme-card border theme-border text-xs font-mono focus:outline-none focus:border-emerald-500"></textarea>
+        </div>
+      </div>
+
+      <div class="px-5 py-3 border-t theme-border flex items-center justify-end gap-2">
+        <button onclick="closeModal('importModal')" class="px-3 py-1.5 rounded-lg theme-card border theme-border text-xs theme-text-secondary">Cancel</button>
+        <button onclick="processImportSubmission()" class="px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs">Decode & Import</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. ADD / EDIT CHANNEL MODAL -->
+  <div id="channelModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="w-full max-w-md rounded-2xl theme-surface border theme-border shadow-2xl overflow-hidden">
+      <div class="px-5 py-4 border-b theme-border flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i data-lucide="tv" class="w-4 h-4 text-emerald-400"></i>
+          <h3 id="channelModalTitle" class="font-semibold text-sm">Add New Channel</h3>
+        </div>
+        <button onclick="closeModal('channelModal')" class="p-1 rounded-lg theme-hover theme-text-muted">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="p-5 space-y-3.5">
+        <input type="hidden" id="editChannelId" />
+
+        <div>
+          <label class="block text-xs theme-text-secondary mb-1">Channel Name *</label>
+          <input id="channelNameInput" type="text" placeholder="e.g. Eurosport 1 HD" class="w-full px-3 py-2 rounded-lg theme-card border theme-border text-xs focus:outline-none focus:border-emerald-500" />
+        </div>
+
+        <div>
+          <label class="block text-xs theme-text-secondary mb-1">Stream URL (.m3u8 / .ts / http) *</label>
+          <input id="channelUrlInput" type="url" placeholder="https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8" class="w-full px-3 py-2 rounded-lg theme-card border theme-border text-xs font-mono focus:outline-none focus:border-emerald-500" />
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs theme-text-secondary mb-1">Select Group</label>
+            <select id="channelGroupSelect" onchange="handleChannelModalGroupSelect(this.value)" class="w-full px-3 py-2 rounded-lg theme-card border theme-border text-xs focus:outline-none focus:border-emerald-500"></select>
+          </div>
+          <div id="newGroupInlineWrapper" class="hidden">
+            <label class="block text-xs theme-text-secondary mb-1">New Group Name</label>
+            <input id="channelNewGroupInput" type="text" placeholder="e.g. Documentary" class="w-full px-3 py-2 rounded-lg theme-card border theme-border text-xs focus:outline-none focus:border-emerald-500" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs theme-text-secondary mb-1">Logo Icon URL (`tvg-logo`)</label>
+            <input id="channelLogoInput" type="url" placeholder="https://.../logo.png" class="w-full px-3 py-2 rounded-lg theme-card border theme-border text-xs font-mono focus:outline-none focus:border-emerald-500" />
+          </div>
+          <div>
+            <label class="block text-xs theme-text-secondary mb-1">EPG TVG-ID (Optional)</label>
+            <input id="channelTvgIdInput" type="text" placeholder="eurosport1.uk" class="w-full px-3 py-2 rounded-lg theme-card border theme-border text-xs font-mono focus:outline-none focus:border-emerald-500" />
+          </div>
+        </div>
+      </div>
+
+      <div class="px-5 py-3 border-t theme-border flex items-center justify-end gap-2">
+        <button onclick="closeModal('channelModal')" class="px-3 py-1.5 rounded-lg theme-card border theme-border text-xs theme-text-secondary">Cancel</button>
+        <button onclick="saveChannelModal()" class="px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs">Save Channel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. CREATE / RENAME GROUP MODAL -->
+  <div id="groupModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="w-full max-w-sm rounded-2xl theme-surface border theme-border shadow-2xl overflow-hidden">
+      <div class="px-5 py-4 border-b theme-border flex items-center justify-between">
+        <h3 id="groupModalTitle" class="font-semibold text-sm">Create New Group</h3>
+        <button onclick="closeModal('groupModal')" class="p-1 rounded-lg theme-hover theme-text-muted">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <div class="p-5 space-y-3">
+        <input type="hidden" id="groupModalOldName" />
+        <label class="block text-xs theme-text-secondary">Group Title</label>
+        <input id="groupModalInput" type="text" placeholder="e.g. 4K Cinema" class="w-full px-3 py-2 rounded-lg theme-card border theme-border text-xs focus:outline-none focus:border-emerald-500" />
+      </div>
+      <div class="px-5 py-3 border-t theme-border flex items-center justify-end gap-2">
+        <button onclick="closeModal('groupModal')" class="px-3 py-1.5 rounded-lg theme-card border theme-border text-xs theme-text-secondary">Cancel</button>
+        <button onclick="saveGroupModal()" class="px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs">Save Group</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. MOVE / COPY CHANNELS OR GROUPS MODAL -->
+  <div id="transferModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="w-full max-w-md rounded-2xl theme-surface border theme-border shadow-2xl overflow-hidden">
+      <div class="px-5 py-4 border-b theme-border flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i data-lucide="arrow-left-right" class="w-4 h-4 text-emerald-400"></i>
+          <h3 id="transferModalTitle" class="font-semibold text-sm">Move / Copy Channels</h3>
+        </div>
+        <button onclick="closeModal('transferModal')" class="p-1 rounded-lg theme-hover theme-text-muted">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="p-5 space-y-4">
+        <p id="transferModalDesc" class="text-xs theme-text-secondary"></p>
+
+        <!-- Action Type: Move vs Copy -->
+        <div>
+          <label class="block text-xs theme-text-secondary mb-1">Operation</label>
+          <select id="transferActionType" class="w-full px-3 py-2 rounded-lg theme-card border theme-border text-xs focus:outline-none focus:border-emerald-500">
+            <option value="move" class="bg-zinc-900">Move (Remove from original)</option>
+            <option value="copy" class="bg-zinc-900">Copy (Keep original & duplicate)</option>
+          </select>
+        </div>
+
+        <!-- Target Playlist -->
+        <div>
+          <label class="block text-xs theme-text-secondary mb-1">Target Playlist</label>
+          <select id="transferTargetPlaylist" onchange="populateTransferGroupDropdown()" class="w-full px-3 py-2 rounded-lg theme-card border theme-border text-xs focus:outline-none focus:border-emerald-500"></select>
+        </div>
+
+        <!-- Target Group -->
+        <div>
+          <label class="block text-xs theme-text-secondary mb-1">Target Group</label>
+          <select id="transferTargetGroup" onchange="toggleTransferNewGroupInput(this.value)" class="w-full px-3 py-2 rounded-lg theme-card border theme-border text-xs focus:outline-none focus:border-emerald-500"></select>
+        </div>
+
+        <div id="transferNewGroupWrapper" class="hidden">
+          <label class="block text-xs theme-text-secondary mb-1">New Target Group Name</label>
+          <input id="transferNewGroupInput" type="text" placeholder="Enter new group title..." class="w-full px-3 py-2 rounded-lg theme-card border theme-border text-xs focus:outline-none focus:border-emerald-500" />
+        </div>
+      </div>
+
+      <div class="px-5 py-3 border-t theme-border flex items-center justify-end gap-2">
+        <button onclick="closeModal('transferModal')" class="px-3 py-1.5 rounded-lg theme-card border theme-border text-xs theme-text-secondary">Cancel</button>
+        <button onclick="executeTransferModal()" class="px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. MERGE PLAYLISTS MODAL -->
+  <div id="mergeModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="w-full max-w-md rounded-2xl theme-surface border theme-border shadow-2xl overflow-hidden">
+      <div class="px-5 py-4 border-b theme-border flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i data-lucide="git-merge" class="w-4 h-4 text-emerald-400"></i>
+          <h3 class="font-semibold text-sm">Merge Multiple Playlists</h3>
+        </div>
+        <button onclick="closeModal('mergeModal')" class="p-1 rounded-lg theme-hover theme-text-muted">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="p-5 space-y-4">
+        <p class="text-xs theme-text-secondary">Select which playlists you want to combine into a unified playlist:</p>
+        <div id="mergePlaylistsChecklist" class="space-y-1.5 max-h-48 overflow-y-auto p-1"></div>
+
+        <div>
+          <label class="block text-xs theme-text-secondary mb-1">Merged Playlist Name</label>
+          <input id="mergeNewPlaylistName" type="text" value="Merged Master Playlist" class="w-full px-3 py-2 rounded-lg theme-card border theme-border text-xs focus:outline-none focus:border-emerald-500" />
+        </div>
+
+        <label class="flex items-center gap-2 text-xs theme-text-secondary cursor-pointer">
+          <input id="mergeRemoveSourcePlaylists" type="checkbox" class="rounded bg-black border-zinc-700 text-emerald-500 focus:ring-0" />
+          <span>Delete source playlists after merging</span>
+        </label>
+      </div>
+
+      <div class="px-5 py-3 border-t theme-border flex items-center justify-end gap-2">
+        <button onclick="closeModal('mergeModal')" class="px-3 py-1.5 rounded-lg theme-card border theme-border text-xs theme-text-secondary">Cancel</button>
+        <button onclick="executePlaylistMerge()" class="px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs">Merge Playlists</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. EXPORT M3U MODAL -->
+  <div id="exportModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="w-full max-w-xl rounded-2xl theme-surface border theme-border shadow-2xl overflow-hidden">
+      <div class="px-5 py-4 border-b theme-border flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i data-lucide="download" class="w-4 h-4 text-emerald-400"></i>
+          <h3 class="font-semibold text-sm">Export Final Playlist (.m3u)</h3>
+        </div>
+        <button onclick="closeModal('exportModal')" class="p-1 rounded-lg theme-hover theme-text-muted">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="p-5 space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs theme-text-secondary mb-1">Export Scope</label>
+            <select id="exportScopeSelect" onchange="refreshExportPreview()" class="w-full px-3 py-2 rounded-lg theme-card border theme-border text-xs focus:outline-none focus:border-emerald-500">
+              <option value="active-playlist" class="bg-zinc-900">Active Playlist (All Groups)</option>
+              <option value="current-view" class="bg-zinc-900">Current Filtered / Group View Only</option>
+              <option value="all-playlists" class="bg-zinc-900">All Imported Playlists Combined</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs theme-text-secondary mb-1">File Name</label>
+            <input id="exportFilenameInput" type="text" value="playlist_cleaned.m3u" class="w-full px-3 py-2 rounded-lg theme-card border theme-border text-xs font-mono focus:outline-none focus:border-emerald-500" />
+          </div>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <span id="exportStatsLabel" class="text-xs theme-text-secondary">Previewing M3U output...</span>
+            <button onclick="copyExportToClipboard()" class="text-xs text-emerald-400 hover:underline flex items-center gap-1">
+              <i data-lucide="copy" class="w-3 h-3"></i>
+              <span>Copy Raw M3U</span>
+            </button>
+          </div>
+          <textarea id="exportPreviewTextarea" readonly rows="8" class="w-full p-3 rounded-lg theme-card border theme-border text-[11px] font-mono text-zinc-300 focus:outline-none"></textarea>
+        </div>
+      </div>
+
+      <div class="px-5 py-3 border-t theme-border flex items-center justify-end gap-2">
+        <button onclick="closeModal('exportModal')" class="px-3 py-1.5 rounded-lg theme-card border theme-border text-xs theme-text-secondary">Close</button>
+        <button onclick="downloadM3UFile()" class="px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs flex items-center gap-1.5">
+          <i data-lucide="download" class="w-3.5 h-3.5"></i>
+          <span>Download .m3u File</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. ABOUT & CREDITS MODAL -->
+  <div id="aboutModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="w-full max-w-md rounded-2xl theme-surface border theme-border shadow-2xl overflow-hidden text-center p-6 relative">
+      <button onclick="closeModal('aboutModal')" class="absolute top-4 right-4 p-1.5 rounded-lg theme-hover theme-text-muted">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+
+      <div class="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mx-auto mb-3 shadow-lg">
+        <svg class="w-7 h-7" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M5 3l14 9-14 9V3z"/>
+        </svg>
+      </div>
+
+      <h3 class="text-base font-bold tracking-tight">StreamDeck M3U Studio</h3>
+      <p class="text-xs theme-text-secondary mt-1">Modern OLED IPTV Playlist Decoder, Organizer & Duplicate Cleaner</p>
+
+      <!-- Required Credit Section -->
+      <div class="mt-5 p-4 rounded-xl theme-card border theme-border space-y-2">
+        <p class="font-mono text-xs font-semibold text-emerald-400 tracking-wide">
+          &lt;/&gt; Credit: Shafin Al Asad Protic &lt;/&gt;
+        </p>
+        <a
+          href="https://www.facebook.com/shafin.protic"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="inline-flex items-center gap-1.5 text-xs text-zinc-300 hover:text-emerald-400 transition underline underline-offset-4 font-mono"
+        >
+          <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+          <span>www.facebook.com/shafin.protic</span>
+        </a>
+      </div>
+
+      <div class="mt-5 grid grid-cols-3 gap-2 text-[11px] theme-text-muted">
+        <div class="p-2 rounded-lg theme-card border theme-border">
+          <span class="block text-zinc-200 font-semibold">M3U / M3U8</span>
+          <span>Smart Decoder</span>
+        </div>
+        <div class="p-2 rounded-lg theme-card border theme-border">
+          <span class="block text-zinc-200 font-semibold">HLS.js</span>
+          <span>Instant Preview</span>
+        </div>
+        <div class="p-2 rounded-lg theme-card border theme-border">
+          <span class="block text-zinc-200 font-semibold">True OLED</span>
+          <span>Zero-Glare UI</span>
+        </div>
+      </div>
+
+      <button onclick="closeModal('aboutModal')" class="mt-5 w-full py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs transition">
+        Done
+      </button>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION CONTAINER -->
+  <div id="toastContainer" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- APPLICATION LOGIC -->
+  <script>
+    // =========================================================================
+    // STATE MANAGEMENT
+    // =========================================================================
+    const state = {
+      playlists: [],
+      activePlaylistId: null,
+      viewMode: 'all', // 'all' | 'group' | 'duplicates' | 'trash'
+      activeGroup: null,
+      searchQuery: '',
+      sortBy: 'custom', // 'custom' | 'name-asc' | 'name-desc' | 'group-asc' | 'group-desc'
+      layoutMode: 'list', // 'list' | 'grid'
+      duplicateCriteria: 'either', // 'either' | 'name' | 'url' | 'both'
+      duplicateAcrossAll: false,
+      selectedChannelIds: new Set(),
+      theme: 'oled', // 'oled' | 'slate' | 'light'
+      hlsInstance: null,
+      currentPlayingUrl: '',
+      miniPlayerExpanded: false,
+      transferContext: null // { mode, sourceGroup, channelIds }
+    };
+
+    // Generate unique IDs
+    function uid(prefix = 'id') {
+      return `${prefix}_${Math.random().toString(36).substring(2, 9)}_${Date.now().toString(36)}`;
+    }
+
+    // =========================================================================
+    // INITIAL SAMPLE PLAYLISTS (With real public test HLS streams & duplicates)
+    // =========================================================================
+    function createInitialPlaylists() {
+      const mainId = uid('pl');
+      const sportsId = uid('pl');
+
+      const sampleMainChannels = [
+        {
+          id: uid('ch'),
+          name: 'NASA TV Public HD',
+          group: 'Science & Doc',
+          logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e5/NASA_logo.svg/200px-NASA_logo.svg.png',
+          url: 'https://ntv1.akamaized.net/hls/live/2014075/NASA-NTV1-HLS/master.m3u8',
+          tvgId: 'nasa.us',
+          trashed: false
+        },
+        {
+          id: uid('ch'),
+          name: 'DW English International',
+          group: 'World News',
+          logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/75/Deutsche_Welle_symbol_2012.svg/200px-Deutsche_Welle_symbol_2012.svg.png',
+          url: 'https://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8',
+          tvgId: 'dw.de',
+          trashed: false
+        },
+        {
+          id: uid('ch'),
+          name: 'Al Jazeera English HD',
+          group: 'World News',
+          logo: 'https://upload.wikimedia.org/wikipedia/en/thumb/f/f2/Aljazeera_eng.svg/200px-Aljazeera_eng.svg.png',
+          url: 'https://live-hls-web-aje.getaj.net/AJE/index.m3u8',
+          tvgId: 'aje.qa',
+          trashed: false
+        },
+        {
+          id: uid('ch'),
+          name: 'Big Buck Bunny 1080p (Test Stream)',
+          group: 'Movies & Cinema',
+          logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Big_buck_bunny_poster_big.jpg/200px-Big_buck_bunny_poster_big.jpg',
+          url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+          tvgId: 'bbb.movie',
+          trashed: false
+        },
+        {
+          id: uid('ch'),
+          name: 'Apple BipBop Multi-Bitrate HLS',
+          group: 'Tech & Demo',
+          logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Apple_logo_black.svg/200px-Apple_logo_black.svg.png',
+          url: 'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8',
+          tvgId: 'apple.hls',
+          trashed: false
+        },
+        {
+          id: uid('ch'),
+          name: 'Sintel Open Movie 4K',
+          group: 'Movies & Cinema',
+          logo: '',
+          url: 'https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8',
+          tvgId: 'sintel.movie',
+          trashed: false
+        },
+        {
+          id: uid('ch'),
+          name: 'Red Bull TV Adventure HD',
+          group: 'Sports & Action',
+          logo: 'https://upload.wikimedia.org/wikipedia/en/thumb/f/f5/Red_Bull_TV_logo.svg/200px-Red_Bull_TV_logo.svg.png',
+          url: 'https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8',
+          tvgId: 'redbull.tv',
+          trashed: false
+        },
+        // Intentional Duplicate #1 (Duplicate by Name & Link)
+        {
+          id: uid('ch'),
+          name: 'NASA TV Public HD',
+          group: 'Science & Doc',
+          logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e5/NASA_logo.svg/200px-NASA_logo.svg.png',
+          url: 'https://ntv1.akamaized.net/hls/live/2014075/NASA-NTV1-HLS/master.m3u8',
+          tvgId: 'nasa.us.dup',
+          trashed: false
+        },
+        // Intentional Duplicate #2 (Duplicate by Stream Link only)
+        {
+          id: uid('ch'),
+          name: 'Big Buck Bunny Backup Feed',
+          group: 'Movies & Cinema',
+          logo: '',
+          url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+          tvgId: 'bbb.backup',
+          trashed: false
+        }
+      ];
+
+      const sampleSecondaryChannels = [
+        {
+          id: uid('ch'),
+          name: 'Tears of Steel Sci-Fi',
+          group: 'Sci-Fi Classics',
+          logo: '',
+          url: 'https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8',
+          tvgId: 'tos.scifi',
+          trashed: false
+        },
+        {
+          id: uid('ch'),
+          name: 'France 24 English Live',
+          group: 'European News',
+          logo: '',
+          url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+          tvgId: 'f24.fr',
+          trashed: false
+        }
+      ];
+
+      state.playlists = [
+        {
+          id: mainId,
+          name: 'Global Master IPTV.m3u',
+          channels: sampleMainChannels,
+          extraGroups: ['Kids & Family']
+        },
+        {
+          id: sportsId,
+          name: 'Secondary Feeds.m3u8',
+          channels: sampleSecondaryChannels,
+          extraGroups: []
+        }
+      ];
+      state.activePlaylistId = mainId;
+    }
+
+    // =========================================================================
+    // M3U / M3U8 PARSER & DECODER
+    // =========================================================================
+    function parseM3UContent(rawText, fallbackGroup = 'Uncategorized') {
+      const lines = rawText.split(/\r?\n/);
+      const parsedChannels = [];
+      let currentMeta = null;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        if (line.startsWith('#EXTINF:')) {
+          // Extract attributes like tvg-id, tvg-name, tvg-logo, group-title
+          const logoMatch = line.match(/tvg-logo="([^"]*)"/i);
+          const groupMatch = line.match(/group-title="([^"]*)"/i);
+          const idMatch = line.match(/tvg-id="([^"]*)"/i);
+          const nameAttrMatch = line.match(/tvg-name="([^"]*)"/i);
+
+          // Extract display name after the last comma outside quotes
+          let displayName = 'Untitled Channel';
+          const commaIndex = line.lastIndexOf(',');
+          if (commaIndex !== -1 && commaIndex < line.length - 1) {
+            displayName = line.substring(commaIndex + 1).trim();
+          } else if (nameAttrMatch && nameAttrMatch[1]) {
+            displayName = nameAttrMatch[1].trim();
+          }
+
+          currentMeta = {
+            name: displayName || 'Untitled Channel',
+            logo: logoMatch ? logoMatch[1].trim() : '',
+            group: (groupMatch && groupMatch[1].trim()) ? groupMatch[1].trim() : fallbackGroup,
+            tvgId: idMatch ? idMatch[1].trim() : ''
+          };
+        } else if (line.startsWith('#EXTGRP:')) {
+          const grp = line.replace('#EXTGRP:', '').trim();
+          if (currentMeta && grp) {
+            currentMeta.group = grp;
+          }
+        } else if (!line.startsWith('#')) {
+          // Stream URL line
+          const url = line;
+          if (currentMeta) {
+            parsedChannels.push({
+              id: uid('ch'),
+              name: currentMeta.name,
+              group: currentMeta.group || fallbackGroup,
+              logo: currentMeta.logo || '',
+              tvgId: currentMeta.tvgId || '',
+              url: url,
+              trashed: false
+            });
+            currentMeta = null;
+          } else {
+            // Bare URL list without #EXTINF
+            const cleanName = url.split('/').pop().split('?')[0] || 'Stream Channel';
+            parsedChannels.push({
+              id: uid('ch'),
+              name: cleanName,
+              group: fallbackGroup,
+              logo: '',
+              tvgId: '',
+              url: url,
+              trashed: false
+            });
+          }
+        }
+      }
+
+      return parsedChannels;
+    }
+
+    // Generate valid .m3u content from a list of channel objects
+    function generateM3UContent(channels) {
+      const lines = ['#EXTM3U'];
+      channels.forEach(ch => {
+        if (ch.trashed) return;
+        const safeName = (ch.name || 'Channel').replace(/\r?\n/g, ' ').trim();
+        const safeGroup = (ch.group || 'Uncategorized').replace(/"/g, "'");
+        const safeLogo = (ch.logo || '').replace(/"/g, '');
+        const safeTvgId = (ch.tvgId || '').replace(/"/g, '');
+
+        let extinf = `#EXTINF:-1`;
+        if (safeTvgId) extinf += ` tvg-id="${safeTvgId}"`;
+        extinf += ` tvg-name="${safeName.replace(/"/g, "'")}"`;
+        if (safeLogo) extinf += ` tvg-logo="${safeLogo}"`;
+        extinf += ` group-title="${safeGroup}",${safeName}`;
+
+        lines.push(extinf);
+        lines.push(ch.url);
+      });
+      return lines.join('\n');
+    }
+
+    // =========================================================================
+    // HELPERS FOR CURRENT PLAYLIST, GROUPS & DUPLICATES
+    // =========================================================================
+    function getActivePlaylist() {
+      return state.playlists.find(p => p.id === state.activePlaylistId) || state.playlists[0];
+    }
+
+    function getActiveChannels(includeTrashed = false) {
+      const pl = getActivePlaylist();
+      if (!pl) return [];
+      return includeTrashed ? pl.channels : pl.channels.filter(c => !c.trashed);
+    }
+
+    function getTrashedChannels() {
+      const pl = getActivePlaylist();
+      if (!pl) return [];
+      return pl.channels.filter(c => c.trashed);
+    }
+
+    function getGroupsMap(playlist) {
+      const map = new Map();
+      if (!playlist) return map;
+      // Include empty extra groups created by user
+      (playlist.extraGroups || []).forEach(g => {
+        if (g && !map.has(g)) map.set(g, 0);
+      });
+      playlist.channels.forEach(ch => {
+        if (!ch.trashed) {
+          const g = ch.group || 'Uncategorized';
+          map.set(g, (map.get(g) || 0) + 1);
+        }
+      });
+      return map;
+    }
+
+    // Scan and return duplicate clusters
+    function scanDuplicates() {
+      const sourceChannels = [];
+      if (state.duplicateAcrossAll) {
+        state.playlists.forEach(pl => {
+          pl.channels.forEach(ch => {
+            if (!ch.trashed) sourceChannels.push({ ...ch, _playlistName: pl.name, _playlistId: pl.id });
+          });
+        });
+      } else {
+        const pl = getActivePlaylist();
+        if (pl) {
+          pl.channels.forEach(ch => {
+            if (!ch.trashed) sourceChannels.push({ ...ch, _playlistName: pl.name, _playlistId: pl.id });
+          });
+        }
+      }
+
+      const normalizeName = (s) => (s || '').toLowerCase().trim().replace(/\s+/g, ' ');
+      const normalizeUrl = (u) => (u || '').trim().replace(/\/+$/, '');
+
+      const duplicateIds = new Set();
+      const duplicateMeta = new Map(); // channelId -> { reason, isFirst }
+
+      if (state.duplicateCriteria === 'name') {
+        const byName = new Map();
+        sourceChannels.forEach(ch => {
+          const key = normalizeName(ch.name);
+          if (!key) return;
+          if (!byName.has(key)) byName.set(key, []);
+          byName.get(key).push(ch);
+        });
+        byName.forEach(list => {
+          if (list.length > 1) {
+            list.forEach((ch, idx) => {
+              duplicateIds.add(ch.id);
+              duplicateMeta.set(ch.id, { reason: 'Duplicate Name', isFirst: idx === 0 });
+            });
+          }
+        });
+      } else if (state.duplicateCriteria === 'url') {
+        const byUrl = new Map();
+        sourceChannels.forEach(ch => {
+          const key = normalizeUrl(ch.url);
+          if (!key) return;
+          if (!byUrl.has(key)) byUrl.set(key, []);
+          byUrl.get(key).push(ch);
+        });
+        byUrl.forEach(list => {
+          if (list.length > 1) {
+            list.forEach((ch, idx) => {
+              duplicateIds.add(ch.id);
+              duplicateMeta.set(ch.id, { reason: 'Duplicate Link', isFirst: idx === 0 });
+            });
+          }
+        });
+      } else if (state.duplicateCriteria === 'both') {
+        const byBoth = new Map();
+        sourceChannels.forEach(ch => {
+          const key = `${normalizeName(ch.name)}||${normalizeUrl(ch.url)}`;
+          if (!byBoth.has(key)) byBoth.set(key, []);
+          byBoth.get(key).push(ch);
+        });
+        byBoth.forEach(list => {
+          if (list.length > 1) {
+            list.forEach((ch, idx) => {
+              duplicateIds.add(ch.id);
+              duplicateMeta.set(ch.id, { reason: 'Exact Name + Link', isFirst: idx === 0 });
+            });
+          }
+        });
+      } else {
+        // 'either': Match by Name OR Stream Link
+        const nameCounts = new Map();
+        const urlCounts = new Map();
+        sourceChannels.forEach(ch => {
+          const n = normalizeName(ch.name);
+          const u = normalizeUrl(ch.url);
+          if (n) nameCounts.set(n, (nameCounts.get(n) || 0) + 1);
+          if (u) urlCounts.set(u, (urlCounts.get(u) || 0) + 1);
+        });
+
+        const seenNames = new Set();
+        const seenUrls = new Set();
+
+        sourceChannels.forEach(ch => {
+          const n = normalizeName(ch.name);
+          const u = normalizeUrl(ch.url);
+          const isNameDup = n && nameCounts.get(n) > 1;
+          const isUrlDup = u && urlCounts.get(u) > 1;
+
+          if (isNameDup || isUrlDup) {
+            duplicateIds.add(ch.id);
+            const isFirstInstance = (!isNameDup || !seenNames.has(n)) && (!isUrlDup || !seenUrls.has(u));
+            if (n) seenNames.add(n);
+            if (u) seenUrls.add(u);
+
+            let reason = 'Duplicate';
+            if (isNameDup && isUrlDup) reason = 'Same Name & Link';
+            else if (isNameDup) reason = 'Same Channel Name';
+            else if (isUrlDup) reason = 'Same Stream Link';
+
+            duplicateMeta.set(ch.id, { reason, isFirst: isFirstInstance });
+          }
+        });
+      }
+
+      const matchedChannels = sourceChannels.filter(ch => duplicateIds.has(ch.id));
+      return { matchedChannels, duplicateMeta };
+    }
+
+    // Filter & sort channels for the current main view
+    function getDisplayedChannels() {
+      let list = [];
+      let dupMeta = new Map();
+
+      if (state.viewMode === 'trash') {
+        list = getTrashedChannels();
+      } else if (state.viewMode === 'duplicates') {
+        const scan = scanDuplicates();
+        list = scan.matchedChannels;
+        dupMeta = scan.duplicateMeta;
+      } else if (state.viewMode === 'group') {
+        list = getActiveChannels(false).filter(c => (c.group || 'Uncategorized') === state.activeGroup);
+      } else {
+        list = getActiveChannels(false);
+      }
+
+      // Search filter (name, group, or stream link)
+      if (state.searchQuery.trim() !== '') {
+        const q = state.searchQuery.toLowerCase().trim();
+        list = list.filter(c =>
+          (c.name || '').toLowerCase().includes(q) ||
+          (c.group || '').toLowerCase().includes(q) ||
+          (c.url || '').toLowerCase().includes(q)
+        );
+      }
+
+      // Sorting
+      const sorted = [...list];
+      if (state.sortBy === 'name-asc') {
+        sorted.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      } else if (state.sortBy === 'name-desc') {
+        sorted.sort((a, b) => (b.name || '').localeCompare(a.name || ''));
+      } else if (state.sortBy === 'group-asc') {
+        sorted.sort((a, b) => (a.group || '').localeCompare(b.group || '') || (a.name || '').localeCompare(b.name || ''));
+      } else if (state.sortBy === 'group-desc') {
+        sorted.sort((a, b) => (b.group || '').localeCompare(a.group || '') || (a.name || '').localeCompare(b.name || ''));
+      }
+
+      return { channels: sorted, dupMeta };
+    }
+
+    // =========================================================================
+    // UI RENDERING
+    // =========================================================================
+    function renderAll() {
+      renderPlaylistsSidebar();
+      renderNavigationCounts();
+      renderGroupsSidebar();
+      renderMainHeaderAndToolbars();
+      renderChannelsView();
+      lucide.createIcons();
+    }
+
+    function renderPlaylistsSidebar() {
+      const container = document.getElementById('playlistList');
+      container.innerHTML = '';
+
+      state.playlists.forEach(pl => {
+        const activeCount = pl.channels.filter(c => !c.trashed).length;
+        const isActive = pl.id === state.activePlaylistId;
+
+        const row = document.createElement('div');
+        row.className = `group flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition ${
+          isActive
+            ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-medium'
+            : 'theme-hover theme-text-secondary border border-transparent'
+        }`;
+
+        row.innerHTML = `
+          <div class="flex items-center gap-2 min-w-0 flex-1" onclick="selectPlaylist('${pl.id}')">
+            <i data-lucide="list-video" class="w-3.5 h-3.5 shrink-0 ${isActive ? 'text-emerald-400' : 'theme-text-muted'}"></i>
+            <span class="truncate">${escapeHtml(pl.name)}</span>
+          </div>
+          <div class="flex items-center gap-1 shrink-0">
+            <button onclick="renamePlaylistPrompt('${pl.id}', event)" class="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-zinc-800 theme-text-muted hover:text-white transition" title="Rename Playlist">
+              <i data-lucide="pencil" class="w-3 h-3"></i>
+            </button>
+            ${state.playlists.length > 1 ? `
+              <button onclick="deletePlaylist('${pl.id}', event)" class="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-rose-500/20 text-rose-400 transition" title="Delete Playlist">
+                <i data-lucide="trash-2" class="w-3 h-3"></i>
+              </button>
+            ` : ''}
+            <span class="text-[10px] font-mono px-1.5 py-0.5 rounded theme-card border theme-border">${activeCount}</span>
+          </div>
+        `;
+        container.appendChild(row);
+      });
+    }
+
+    function renderNavigationCounts() {
+      const allCount = getActiveChannels(false).length;
+      const trashCount = getTrashedChannels().length;
+      const dupScan = scanDuplicates();
+      const dupCount = dupScan.matchedChannels.length;
+
+      document.getElementById('navAllCount').textContent = allCount;
+      document.getElementById('navTrashCount').textContent = trashCount;
+      document.getElementById('navDupCount').textContent = dupCount;
+      document.getElementById('headerDupBadge').textContent = dupCount;
+
+      const setBtnStyle = (id, active, activeColor = 'emerald') => {
+        const el = document.getElementById(id);
+        if (active) {
+          el.className = `w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium bg-${activeColor}-500/15 text-${activeColor}-400 border border-${activeColor}-500/30 transition`;
+        } else {
+          el.className = `w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium theme-hover theme-text-secondary border border-transparent transition`;
+        }
+      };
+
+      setBtnStyle('navAllBtn', state.viewMode === 'all', 'emerald');
+      setBtnStyle('navDupBtn', state.viewMode === 'duplicates', 'amber');
+      setBtnStyle('navTrashBtn', state.viewMode === 'trash', 'rose');
+    }
+
+    function renderGroupsSidebar() {
+      const container = document.getElementById('groupList');
+      container.innerHTML = '';
+
+      const pl = getActivePlaylist();
+      const groupsMap = getGroupsMap(pl);
+      const sortedGroups = Array.from(groupsMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+
+      if (sortedGroups.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-6 px-2 text-xs theme-text-muted">
+            No groups in this playlist yet.
+          </div>
+        `;
+        return;
+      }
+
+      sortedGroups.forEach(([groupName, count]) => {
+        const isSelected = state.viewMode === 'group' && state.activeGroup === groupName;
+        const safeAttrGroup = escapeAttr(groupName);
+
+        const item = document.createElement('div');
+        item.className = `group flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition ${
+          isSelected
+            ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-medium'
+            : 'theme-hover theme-text-secondary border border-transparent'
+        }`;
+
+        item.innerHTML = `
+          <div class="flex items-center gap-2 min-w-0 flex-1" onclick="selectGroupView('${safeAttrGroup}')">
+            <i data-lucide="folder" class="w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-emerald-400' : 'theme-text-muted'}"></i>
+            <span class="truncate">${escapeHtml(groupName)}</span>
+          </div>
+          <div class="flex items-center gap-0.5 shrink-0">
+            <button onclick="openTransferGroupModal('${safeAttrGroup}', event)" class="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-zinc-800 theme-text-muted hover:text-emerald-400" title="Move/Copy Entire Group">
+              <i data-lucide="arrow-right-left" class="w-3 h-3"></i>
+            </button>
+            <button onclick="openRenameGroupModal('${safeAttrGroup}', event)" class="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-zinc-800 theme-text-muted hover:text-white" title="Rename Group">
+              <i data-lucide="pencil" class="w-3 h-3"></i>
+            </button>
+            <button onclick="trashEntireGroup('${safeAttrGroup}', event)" class="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-rose-500/20 text-rose-400" title="Move Group to Trash">
+              <i data-lucide="trash-2" class="w-3 h-3"></i>
+            </button>
+            <span class="text-[11px] font-mono px-1.5 py-0.5 rounded theme-card border theme-border ml-1">${count}</span>
+          </div>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    function renderMainHeaderAndToolbars() {
+      const pl = getActivePlaylist();
+      const { channels } = getDisplayedChannels();
+
+      const titleEl = document.getElementById('currentViewTitle');
+      const subEl = document.getElementById('currentViewSubtitle');
+      const countEl = document.getElementById('currentViewCount');
+      const iconBox = document.getElementById('currentViewIcon');
+
+      countEl.textContent = `${channels.length} channel${channels.length === 1 ? '' : 's'}`;
+
+      if (state.viewMode === 'all') {
+        titleEl.textContent = 'All Channels';
+        subEl.textContent = `Playlist: ${pl ? pl.name : 'None'}`;
+        iconBox.innerHTML = `<i data-lucide="tv" class="w-4 h-4 text-emerald-400"></i>`;
+      } else if (state.viewMode === 'group') {
+        titleEl.textContent = state.activeGroup || 'Group';
+        subEl.textContent = `Group in ${pl ? pl.name : ''}`;
+        iconBox.innerHTML = `<i data-lucide="folder-open" class="w-4 h-4 text-emerald-400"></i>`;
+      } else if (state.viewMode === 'duplicates') {
+        titleEl.textContent = 'Duplicate Channels Scanner';
+        subEl.textContent = state.duplicateAcrossAll ? 'Scanning across all imported playlists' : `Scanning ${pl ? pl.name : ''}`;
+        iconBox.innerHTML = `<i data-lucide="scan-search" class="w-4 h-4 text-amber-400"></i>`;
+      } else if (state.viewMode === 'trash') {
+        titleEl.textContent = 'Trash Bin';
+        subEl.textContent = `Soft-deleted channels in ${pl ? pl.name : ''}`;
+        iconBox.innerHTML = `<i data-lucide="trash-2" class="w-4 h-4 text-rose-400"></i>`;
+      }
+
+      // Toggle Duplicate & Trash toolbars
+      document.getElementById('duplicateToolbar').classList.toggle('hidden', state.viewMode !== 'duplicates');
+      document.getElementById('trashToolbar').classList.toggle('hidden', state.viewMode !== 'trash');
+
+      // Highlight Duplicate Filter Pills
+      const modes = [
+        { id: 'dupModeEither', key: 'either' },
+        { id: 'dupModeName', key: 'name' },
+        { id: 'dupModeUrl', key: 'url' },
+        { id: 'dupModeBoth', key: 'both' }
+      ];
+      modes.forEach(m => {
+        const btn = document.getElementById(m.id);
+        if (state.duplicateCriteria === m.key) {
+          btn.className = 'px-2.5 py-1 rounded-md font-medium bg-amber-500 text-black transition';
+        } else {
+          btn.className = 'px-2.5 py-1 rounded-md font-medium theme-text-secondary hover:text-white transition';
+        }
+      });
+
+      // Bulk selection bar
+      const bulkBar = document.getElementById('bulkActionBar');
+      const selCount = state.selectedChannelIds.size;
+      if (selCount > 0) {
+        bulkBar.classList.remove('hidden');
+        document.getElementById('selectedCountBadge').textContent = `${selCount} selected`;
+        document.getElementById('bulkDeleteBtnLabel').textContent = state.viewMode === 'trash' ? 'Delete Permanently' : 'Move to Trash';
+      } else {
+        bulkBar.classList.add('hidden');
+      }
+
+      // Select All Checkbox sync
+      const allDisplayedSelected = channels.length > 0 && channels.every(c => state.selectedChannelIds.has(c.id));
+      document.getElementById('selectAllCheckbox').checked = allDisplayedSelected;
+    }
+
+    function renderChannelsView() {
+      const container = document.getElementById('channelContainer');
+      const { channels, dupMeta } = getDisplayedChannels();
+
+      if (channels.length === 0) {
+        container.innerHTML = `
+          <div class="h-full min-h-[280px] flex flex-col items-center justify-center text-center p-6">
+            <div class="w-12 h-12 rounded-2xl theme-card border theme-border flex items-center justify-center theme-text-muted mb-3">
+              <i data-lucide="${state.viewMode === 'duplicates' ? 'check-circle-2' : 'tv-minimal'}" class="w-6 h-6 ${state.viewMode === 'duplicates' ? 'text-emerald-400' : ''}"></i>
+            </div>
+            <h3 class="text-sm font-semibold">
+              ${state.viewMode === 'duplicates' ? 'No Duplicate Channels Found!' : 'No Channels to Display'}
+            </h3>
+            <p class="text-xs theme-text-muted max-w-sm mt-1">
+              ${
+                state.viewMode === 'duplicates'
+                  ? 'Your playlist is clean under the current duplicate filter criteria.'
+                  : state.viewMode === 'trash'
+                  ? 'Trash bin is empty.'
+                  : 'Import an M3U/M3U8 playlist, add a new channel, or adjust your search query.'
+              }
+            </p>
+            ${state.viewMode === 'all' || state.viewMode === 'group' ? `
+              <div class="mt-4 flex items-center gap-2">
+                <button onclick="openChannelModal()" class="px-3 py-1.5 rounded-lg bg-emerald-500 text-black font-semibold text-xs flex items-center gap-1.5">
+                  <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                  <span>Add Channel</span>
+                </button>
+                <button onclick="openImportModal()" class="px-3 py-1.5 rounded-lg theme-card border theme-border text-xs theme-text-secondary">
+                  Import M3U
+                </button>
+              </div>
+            ` : ''}
+          </div>
+        `;
+        return;
+      }
+
+      if (state.layoutMode === 'grid') {
+        renderGridChannels(container, channels, dupMeta);
+      } else {
+        renderListChannels(container, channels, dupMeta);
+      }
+    }
+
+    function renderListChannels(container, channels, dupMeta) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'space-y-1.5';
+
+      channels.forEach((ch, index) => {
+        const isSelected = state.selectedChannelIds.has(ch.id);
+        const isPlaying = state.currentPlayingUrl === ch.url;
+        const dupInfo = dupMeta.get(ch.id);
+
+        const row = document.createElement('div');
+        row.className = `group flex items-center justify-between gap-3 px-3 py-2 rounded-xl border transition ${
+          isPlaying
+            ? 'bg-emerald-500/10 border-emerald-500/40'
+            : isSelected
+            ? 'bg-emerald-500/5 border-emerald-500/30'
+            : 'theme-card theme-border theme-hover'
+        }`;
+
+        const fallbackInitials = (ch.name || 'TV').substring(0, 2).toUpperCase();
+
+        row.innerHTML = `
+          <!-- Left: Checkbox, Logo, Channel Details -->
+          <div class="flex items-center gap-3 min-w-0 flex-1">
+            <input
+              type="checkbox"
+              ${isSelected ? 'checked' : ''}
+              onchange="toggleChannelSelect('${ch.id}', this.checked)"
+              class="rounded bg-black border-zinc-700 text-emerald-500 focus:ring-0 cursor-pointer shrink-0"
+            />
+
+            <!-- Channel Icon with Clean Fallback -->
+            <div class="w-9 h-9 rounded-lg bg-black border theme-border flex items-center justify-center overflow-hidden shrink-0 relative">
+              ${ch.logo ? `
+                <img
+                  src="${escapeAttr(ch.logo)}"
+                  alt="${escapeAttr(ch.name)}"
+                  class="w-full h-full object-contain p-0.5"
+                  onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+                />
+              ` : ''}
+              <div class="${ch.logo ? 'hidden' : 'flex'} w-full h-full items-center justify-center text-[11px] font-mono font-bold text-emerald-400 bg-emerald-500/5">
+                ${escapeHtml(fallbackInitials)}
+              </div>
+            </div>
+
+            <!-- Channel Name, Badges & Stream Link -->
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="font-medium text-xs truncate max-w-xs sm:max-w-md">${escapeHtml(ch.name)}</span>
+                <span onclick="selectGroupView('${escapeAttr(ch.group || 'Uncategorized')}')" class="cursor-pointer text-[10px] px-2 py-0.5 rounded-md theme-surface border theme-border theme-text-secondary hover:border-emerald-500/40 transition">
+                  ${escapeHtml(ch.group || 'Uncategorized')}
+                </span>
+                ${ch._playlistName && state.duplicateAcrossAll ? `
+                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20">
+                    ${escapeHtml(ch._playlistName)}
+                  </span>
+                ` : ''}
+                ${dupInfo ? `
+                  <span class="text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                    dupInfo.isFirst
+                      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                      : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                  }">
+                    ${dupInfo.isFirst ? 'Original (1st)' : dupInfo.reason}
+                  </span>
+                ` : ''}
+              </div>
+              <div class="flex items-center gap-2 mt-0.5">
+                <span class="text-[11px] font-mono theme-text-muted truncate max-w-xs sm:max-w-lg">${escapeHtml(ch.url)}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Instant Actions -->
+          <div class="flex items-center gap-1 shrink-0">
+            <!-- Instant Play in Mini Player -->
+            <button
+              onclick="playChannelInMiniPlayer('${ch.id}')"
+              class="px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 transition ${
+                isPlaying
+                  ? 'bg-emerald-500 text-black font-semibold'
+                  : 'bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-black border border-emerald-500/20'
+              }"
+              title="Play Instant Preview"
+            >
+              <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i>
+              <span class="hidden sm:inline">${isPlaying ? 'Playing' : 'Play'}</span>
+            </button>
+
+            ${state.viewMode !== 'trash' ? `
+              <!-- Move Up / Down (When in custom order) -->
+              ${state.sortBy === 'custom' && state.viewMode !== 'duplicates' ? `
+                <div class="hidden md:flex items-center">
+                  <button onclick="moveChannelStep('${ch.id}', -1)" class="p-1.5 rounded-lg theme-hover theme-text-muted hover:text-white" title="Move Up">
+                    <i data-lucide="chevron-up" class="w-3.5 h-3.5"></i>
+                  </button>
+                  <button onclick="moveChannelStep('${ch.id}', 1)" class="p-1.5 rounded-lg theme-hover theme-text-muted hover:text-white" title="Move Down">
+                    <i data-lucide="chevron-down" class="w-3.5 h-3.5"></i>
+                  </button>
+                </div>
+              ` : ''}
+
+              <!-- Quick Move/Copy -->
+              <button onclick="openSingleChannelTransferModal('${ch.id}')" class="p-1.5 rounded-lg theme-hover theme-text-secondary" title="Move or Copy to Group/Playlist">
+                <i data-lucide="folder-symlink" class="w-3.5 h-3.5"></i>
+              </button>
+
+              <!-- Edit Channel -->
+              <button onclick="openChannelModal('${ch.id}')" class="p-1.5 rounded-lg theme-hover theme-text-secondary" title="Edit Channel">
+                <i data-lucide="sliders-horizontal" class="w-3.5 h-3.5"></i>
+              </button>
+
+              <!-- Copy Stream URL -->
+              <button onclick="copyTextToClipboard('${escapeAttr(ch.url)}', 'Stream link copied!')" class="p-1.5 rounded-lg theme-hover theme-text-secondary" title="Copy Stream Link">
+                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+              </button>
+
+              <!-- Soft Delete to Trash -->
+              <button onclick="softDeleteChannel('${ch.id}')" class="p-1.5 rounded-lg hover:bg-rose-500/20 text-rose-400" title="Move to Trash">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              </button>
+            ` : `
+              <!-- Restore or Permanently Delete in Trash View -->
+              <button onclick="restoreChannel('${ch.id}')" class="px-2 py-1 rounded-lg bg-emerald-500/15 text-emerald-400 text-xs flex items-center gap-1" title="Restore Channel">
+                <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                <span>Restore</span>
+              </button>
+              <button onclick="permanentlyDeleteChannel('${ch.id}')" class="p-1.5 rounded-lg hover:bg-rose-500/20 text-rose-400" title="Delete Forever">
+                <i data-lucide="x-circle" class="w-3.5 h-3.5"></i>
+              </button>
+            `}
+          </div>
+        `;
+        wrapper.appendChild(row);
+      });
+
+      container.innerHTML = '';
+      container.appendChild(wrapper);
+    }
+
+    function renderGridChannels(container, channels, dupMeta) {
+      const grid = document.createElement('div');
+      grid.className = 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3';
+
+      channels.forEach(ch => {
+        const isSelected = state.selectedChannelIds.has(ch.id);
+        const isPlaying = state.currentPlayingUrl === ch.url;
+        const dupInfo = dupMeta.get(ch.id);
+        const fallbackInitials = (ch.name || 'TV').substring(0, 2).toUpperCase();
+
+        const card = document.createElement('div');
+        card.className = `rounded-xl border p-3.5 flex flex-col justify-between gap-3 transition ${
+          isPlaying
+            ? 'bg-emerald-500/10 border-emerald-500/40'
+            : isSelected
+            ? 'bg-emerald-500/5 border-emerald-500/30'
+            : 'theme-card theme-border theme-hover'
+        }`;
+
+        card.innerHTML = `
+          <div>
+            <div class="flex items-start justify-between gap-2">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <input
+                  type="checkbox"
+                  ${isSelected ? 'checked' : ''}
+                  onchange="toggleChannelSelect('${ch.id}', this.checked)"
+                  class="rounded bg-black border-zinc-700 text-emerald-500 focus:ring-0 cursor-pointer shrink-0"
+                />
+                <div class="w-10 h-10 rounded-xl bg-black border theme-border flex items-center justify-center overflow-hidden shrink-0">
+                  ${ch.logo ? `
+                    <img
+                      src="${escapeAttr(ch.logo)}"
+                      alt="${escapeAttr(ch.name)}"
+                      class="w-full h-full object-contain p-1"
+                      onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+                    />
+                  ` : ''}
+                  <div class="${ch.logo ? 'hidden' : 'flex'} w-full h-full items-center justify-center text-xs font-mono font-bold text-emerald-400">
+                    ${escapeHtml(fallbackInitials)}
+                  </div>
+                </div>
+                <div class="min-w-0">
+                  <h4 class="font-semibold text-xs truncate">${escapeHtml(ch.name)}</h4>
+                  <span class="inline-block text-[10px] px-1.5 py-0.5 rounded theme-surface border theme-border theme-text-secondary mt-0.5">
+                    ${escapeHtml(ch.group || 'Uncategorized')}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            ${dupInfo ? `
+              <div class="mt-2">
+                <span class="text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                  dupInfo.isFirst ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-300'
+                }">
+                  ${dupInfo.isFirst ? 'Original (1st)' : dupInfo.reason}
+                </span>
+              </div>
+            ` : ''}
+
+            <p class="text-[10px] font-mono theme-text-muted truncate mt-2.5 bg-black/40 px-2 py-1 rounded border theme-border">
+              ${escapeHtml(ch.url)}
+            </p>
+          </div>
+
+          <div class="flex items-center justify-between pt-2 border-t theme-border">
+            <button
+              onclick="playChannelInMiniPlayer('${ch.id}')"
+              class="px-3 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 ${
+                isPlaying
+                  ? 'bg-emerald-500 text-black font-semibold'
+                  : 'bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-black'
+              } transition"
+            >
+              <i data-lucide="play" class="w-3 h-3 fill-current"></i>
+              <span>${isPlaying ? 'Playing' : 'Preview'}</span>
+            </button>
+
+            <div class="flex items-center gap-1">
+              ${state.viewMode !== 'trash' ? `
+                <button onclick="openSingleChannelTransferModal('${ch.id}')" class="p-1.5 rounded-lg theme-hover theme-text-secondary" title="Move/Copy">
+                  <i data-lucide="folder-symlink" class="w-3.5 h-3.5"></i>
+                </button>
+                <button onclick="openChannelModal('${ch.id}')" class="p-1.5 rounded-lg theme-hover theme-text-secondary" title="Edit">
+                  <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+                </button>
+                <button onclick="softDeleteChannel('${ch.id}')" class="p-1.5 rounded-lg hover:bg-rose-500/20 text-rose-400" title="Trash">
+                  <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                </button>
+              ` : `
+                <button onclick="restoreChannel('${ch.id}')" class="p-1.5 rounded-lg bg-emerald-500/15 text-emerald-400" title="Restore">
+                  <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                </button>
+                <button onclick="permanentlyDeleteChannel('${ch.id}')" class="p-1.5 rounded-lg hover:bg-rose-500/20 text-rose-400" title="Delete Forever">
+                  <i data-lucide="x-circle" class="w-3.5 h-3.5"></i>
+                </button>
+              `}
+            </div>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+
+      container.innerHTML = '';
+      container.appendChild(grid);
+    }
+
+    // =========================================================================
+    // INSTANT MINI PLAYER (HLS.js + Native HTML5 Video)
+    // =========================================================================
+    function findChannelAnywhere(channelId) {
+      for (const pl of state.playlists) {
+        const found = pl.channels.find(c => c.id === channelId);
+        if (found) return found;
+      }
+      return null;
+    }
+
+    function playChannelInMiniPlayer(channelId) {
+      const ch = findChannelAnywhere(channelId);
+      if (!ch) return;
+
+      const panel = document.getElementById('miniPlayerPanel');
+      const video = document.getElementById('hlsVideo');
+      const overlay = document.getElementById('playerOverlay');
+      const overlayText = document.getElementById('playerOverlayText');
+      const overlaySub = document.getElementById('playerOverlaySub');
+
+      panel.classList.remove('hidden');
+      state.currentPlayingUrl = ch.url;
+
+      document.getElementById('playerChannelTitle').textContent = ch.name;
+      document.getElementById('playerChannelGroup').textContent = ch.group || 'Uncategorized';
+      document.getElementById('playerUrlPreview').textContent = ch.url;
+
+      overlay.classList.remove('hidden');
+      overlayText.textContent = 'Connecting to stream...';
+      overlaySub.textContent = '';
+
+      if (state.hlsInstance) {
+        state.hlsInstance.destroy();
+        state.hlsInstance = null;
+      }
+
+      const streamUrl = ch.url.trim();
+
+      if (Hls.isSupported() && (streamUrl.includes('.m3u8') || !streamUrl.endsWith('.mp4'))) {
+        const hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: true
+        });
+        state.hlsInstance = hls;
+        hls.loadSource(streamUrl);
+        hls.attachMedia(video);
+
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          overlay.classList.add('hidden');
+          video.play().catch(() => {});
+        });
+
+        hls.on(Hls.Events.ERROR, (event, data) => {
+          if (data.fatal) {
+            overlay.classList.remove('hidden');
+            overlayText.textContent = 'Stream Unavailable or CORS Restricted';
+            overlaySub.textContent = 'Some IPTV servers block browser playback or are offline. Try copying the URL to VLC.';
+          }
+        });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = streamUrl;
+        video.addEventListener('loadedmetadata', () => {
+          overlay.classList.add('hidden');
+          video.play().catch(() => {});
+        }, { once: true });
+      } else {
+        video.src = streamUrl;
+        video.play().then(() => {
+          overlay.classList.add('hidden');
+        }).catch(() => {
+          overlay.classList.remove('hidden');
+          overlayText.textContent = 'Cannot preview format directly in browser';
+          overlaySub.textContent = 'Copy the stream link to test in an external player.';
+        });
+      }
+
+      renderChannelsView();
+      lucide.createIcons();
+    }
+
+    function closeMiniPlayer() {
+      const video = document.getElementById('hlsVideo');
+      video.pause();
+      video.removeAttribute('src');
+      if (state.hlsInstance) {
+        state.hlsInstance.destroy();
+        state.hlsInstance = null;
+      }
+      state.currentPlayingUrl = '';
+      document.getElementById('miniPlayerPanel').classList.add('hidden');
+      renderChannelsView();
+      lucide.createIcons();
+    }
+
+    function toggleMiniPlayerSize() {
+      const panel = document.getElementById('miniPlayerPanel');
+      state.miniPlayerExpanded = !state.miniPlayerExpanded;
+      if (state.miniPlayerExpanded) {
+        panel.className = 'fixed bottom-4 right-4 z-40 w-[92vw] sm:w-[540px] rounded-2xl theme-surface border theme-border shadow-2xl overflow-hidden transition-all duration-200';
+      } else {
+        panel.className = 'fixed bottom-4 right-4 z-40 w-80 sm:w-96 rounded-2xl theme-surface border theme-border shadow-2xl overflow-hidden transition-all duration-200';
+      }
+    }
+
+    function copyCurrentPlayerUrl() {
+      if (state.currentPlayingUrl) {
+        copyTextToClipboard(state.currentPlayingUrl, 'Stream link copied!');
+      }
+    }
+
+    // =========================================================================
+    // PLAYLIST, GROUP & CHANNEL ACTIONS
+    // =========================================================================
+    function selectPlaylist(playlistId) {
+      state.activePlaylistId = playlistId;
+      state.selectedChannelIds.clear();
+      if (state.viewMode === 'group') {
+        state.viewMode = 'all';
+        state.activeGroup = null;
+      }
+      renderAll();
+    }
+
+    function setViewMode(mode) {
+      state.viewMode = mode;
+      state.activeGroup = null;
+      state.selectedChannelIds.clear();
+      renderAll();
+    }
+
+    function selectGroupView(groupName) {
+      state.viewMode = 'group';
+      state.activeGroup = groupName;
+      state.selectedChannelIds.clear();
+      renderAll();
+    }
+
+    function handleSearch(val) {
+      state.searchQuery = val;
+      document.getElementById('clearSearchBtn').classList.toggle('hidden', !val);
+      renderMainHeaderAndToolbars();
+      renderChannelsView();
+      lucide.createIcons();
+    }
+
+    function clearSearch() {
+      const input = document.getElementById('searchInput');
+      input.value = '';
+      handleSearch('');
+    }
+
+    function handleSortChange(sortValue) {
+      state.sortBy = sortValue;
+      renderChannelsView();
+      lucide.createIcons();
+    }
+
+    function permanentlyApplySort() {
+      const pl = getActivePlaylist();
+      if (!pl || state.sortBy === 'custom') {
+        showToast('Select a sort order (A-Z, Z-A, or Group) first');
+        return;
+      }
+
+      if (state.sortBy === 'name-asc') {
+        pl.channels.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      } else if (state.sortBy === 'name-desc') {
+        pl.channels.sort((a, b) => (b.name || '').localeCompare(a.name || ''));
+      } else if (state.sortBy === 'group-asc') {
+        pl.channels.sort((a, b) => (a.group || '').localeCompare(b.group || '') || (a.name || '').localeCompare(b.name || ''));
+      } else if (state.sortBy === 'group-desc') {
+        pl.channels.sort((a, b) => (b.group || '').localeCompare(a.group || '') || (a.name || '').localeCompare(b.name || ''));
+      }
+
+      state.sortBy = 'custom';
+      document.getElementById('sortSelect').value = 'custom';
+      showToast('Channel order permanently saved to playlist');
+      renderAll();
+    }
+
+    function moveChannelStep(channelId, direction) {
+      const pl = getActivePlaylist();
+      if (!pl) return;
+      const idx = pl.channels.findIndex(c => c.id === channelId);
+      if (idx === -1) return;
+
+      const targetIdx = idx + direction;
+      if (targetIdx < 0 || targetIdx >= pl.channels.length) return;
+
+      const temp = pl.channels[idx];
+      pl.channels[idx] = pl.channels[targetIdx];
+      pl.channels[targetIdx] = temp;
+      renderAll();
+    }
+
+    function setLayoutMode(mode) {
+      state.layoutMode = mode;
+      document.getElementById('layoutListBtn').className = mode === 'list' ? 'p-1 rounded text-emerald-400 bg-zinc-800/80' : 'p-1 rounded theme-text-muted';
+      document.getElementById('layoutGridBtn').className = mode === 'grid' ? 'p-1 rounded text-emerald-400 bg-zinc-800/80' : 'p-1 rounded theme-text-muted';
+      renderChannelsView();
+      lucide.createIcons();
+    }
+
+    // Selection handlers
+    function toggleChannelSelect(channelId, checked) {
+      if (checked) state.selectedChannelIds.add(channelId);
+      else state.selectedChannelIds.delete(channelId);
+      renderMainHeaderAndToolbars();
+      renderChannelsView();
+      lucide.createIcons();
+    }
+
+    function toggleSelectAll(checked) {
+      const { channels } = getDisplayedChannels();
+      if (checked) {
+        channels.forEach(c => state.selectedChannelIds.add(c.id));
+      } else {
+        channels.forEach(c => state.selectedChannelIds.delete(c.id));
+      }
+      renderMainHeaderAndToolbars();
+      renderChannelsView();
+      lucide.createIcons();
+    }
+
+    function clearSelection() {
+      state.selectedChannelIds.clear();
+      renderMainHeaderAndToolbars();
+      renderChannelsView();
+      lucide.createIcons();
+    }
+
+    // Soft Delete / Trash / Restore
+    function softDeleteChannel(channelId) {
+      const ch = findChannelAnywhere(channelId);
+      if (!ch) return;
+      ch.trashed = true;
+      state.selectedChannelIds.delete(channelId);
+      showToast(`Moved "${ch.name}" to Trash`);
+      renderAll();
+    }
+
+    function restoreChannel(channelId) {
+      const ch = findChannelAnywhere(channelId);
+      if (!ch) return;
+      ch.trashed = false;
+      state.selectedChannelIds.delete(channelId);
+      showToast(`Restored "${ch.name}"`);
+      renderAll();
+    }
+
+    function permanentlyDeleteChannel(channelId) {
+      state.playlists.forEach(pl => {
+        pl.channels = pl.channels.filter(c => c.id !== channelId);
+      });
+      state.selectedChannelIds.delete(channelId);
+      showToast('Channel permanently deleted');
+      renderAll();
+    }
+
+    function bulkDeleteSelected() {
+      const count = state.selectedChannelIds.size;
+      if (count === 0) return;
+
+      if (state.viewMode === 'trash') {
+        state.playlists.forEach(pl => {
+          pl.channels = pl.channels.filter(c => !state.selectedChannelIds.has(c.id));
+        });
+        showToast(`Permanently deleted ${count} channels`);
+      } else {
+        state.playlists.forEach(pl => {
+          pl.channels.forEach(c => {
+            if (state.selectedChannelIds.has(c.id)) c.trashed = true;
+          });
+        });
+        showToast(`Moved ${count} channels to Trash`);
+      }
+      state.selectedChannelIds.clear();
+      renderAll();
+    }
+
+    function restoreAllTrash() {
+      const pl = getActivePlaylist();
+      if (!pl) return;
+      let count = 0;
+      pl.channels.forEach(c => {
+        if (c.trashed) {
+          c.trashed = false;
+          count++;
+        }
+      });
+      showToast(`Restored ${count} channels from Trash`);
+      renderAll();
+    }
+
+    function emptyTrashPermanently() {
+      const pl = getActivePlaylist();
+      if (!pl) return;
+      const before = pl.channels.length;
+      pl.channels = pl.channels.filter(c => !c.trashed);
+      const removed = before - pl.channels.length;
+      showToast(`Emptied Trash (${removed} channels deleted forever)`);
+      renderAll();
+    }
+
+    // Duplicate Scanner Controls
+    function setDuplicateCriteria(criteria) {
+      state.duplicateCriteria = criteria;
+      renderAll();
+    }
+
+    function toggleDuplicateScope(acrossAll) {
+      state.duplicateAcrossAll = acrossAll;
+      renderAll();
+    }
+
+    function removeAllDuplicatesKeepFirst() {
+      const { matchedChannels, duplicateMeta } = scanDuplicates();
+      let removedCount = 0;
+
+      matchedChannels.forEach(ch => {
+        const meta = duplicateMeta.get(ch.id);
+        if (meta && !meta.isFirst) {
+          const realCh = findChannelAnywhere(ch.id);
+          if (realCh) {
+            realCh.trashed = true;
+            removedCount++;
+          }
+        }
+      });
+
+      if (removedCount === 0) {
+        showToast('No duplicate copies to remove');
+      } else {
+        showToast(`Removed ${removedCount} duplicate channel(s) to Trash!`);
+      }
+      renderAll();
+    }
+
+    // =========================================================================
+    // GROUP MANAGEMENT (New, Rename, Trash Group)
+    // =========================================================================
+    function openNewGroupModal() {
+      document.getElementById('groupModalTitle').textContent = 'Create New Group';
+      document.getElementById('groupModalOldName').value = '';
+      document.getElementById('groupModalInput').value = '';
+      openModal('groupModal');
+    }
+
+    function openRenameGroupModal(groupName, ev) {
+      if (ev) ev.stopPropagation();
+      document.getElementById('groupModalTitle').textContent = 'Rename Group';
+      document.getElementById('groupModalOldName').value = groupName;
+      document.getElementById('groupModalInput').value = groupName;
+      openModal('groupModal');
+    }
+
+    function saveGroupModal() {
+      const oldName = document.getElementById('groupModalOldName').value;
+      const newName = document.getElementById('groupModalInput').value.trim();
+      if (!newName) {
+        showToast('Please enter a group name');
+        return;
+      }
+
+      const pl = getActivePlaylist();
+      if (!pl) return;
+      if (!pl.extraGroups) pl.extraGroups = [];
+
+      if (oldName) {
+        // Rename existing group
+        pl.channels.forEach(ch => {
+          if (!ch.trashed && (ch.group || 'Uncategorized') === oldName) {
+            ch.group = newName;
+          }
+        });
+        pl.extraGroups = pl.extraGroups.map(g => g === oldName ? newName : g);
+        if (state.activeGroup === oldName) state.activeGroup = newName;
+        showToast(`Renamed group "${oldName}" to "${newName}"`);
+      } else {
+        if (!pl.extraGroups.includes(newName)) {
+          pl.extraGroups.push(newName);
+        }
+        state.viewMode = 'group';
+        state.activeGroup = newName;
+        showToast(`Created group "${newName}"`);
+      }
+
+      closeModal('groupModal');
+      renderAll();
+    }
+
+    function trashEntireGroup(groupName, ev) {
+      if (ev) ev.stopPropagation();
+      const pl = getActivePlaylist();
+      if (!pl) return;
+
+      let count = 0;
+      pl.channels.forEach(ch => {
+        if (!ch.trashed && (ch.group || 'Uncategorized') === groupName) {
+          ch.trashed = true;
+          count++;
+        }
+      });
+      pl.extraGroups = (pl.extraGroups || []).filter(g => g !== groupName);
+
+      if (state.viewMode === 'group' && state.activeGroup === groupName) {
+        state.viewMode = 'all';
+        state.activeGroup = null;
+      }
+
+      showToast(`Moved group "${groupName}" (${count} channels) to Trash`);
+      renderAll();
+    }
+
+    // =========================================================================
+    // ADD / EDIT CHANNEL MODAL
+    // =========================================================================
+    function openChannelModal(channelId = null) {
+      const pl = getActivePlaylist();
+      if (!pl) return;
+
+      const groupSelect = document.getElementById('channelGroupSelect');
+      const groupsMap = getGroupsMap(pl);
+      const groupNames = Array.from(groupsMap.keys()).sort();
+      if (!groupNames.includes('Uncategorized')) groupNames.unshift('Uncategorized');
+
+      groupSelect.innerHTML = groupNames
+        .map(g => `<option value="${escapeAttr(g)}" class="bg-zinc-900">${escapeHtml(g)}</option>`)
+        .join('') + `<option value="__NEW__" class="bg-zinc-900 text-emerald-400">+ Create New Group...</option>`;
+
+      document.getElementById('newGroupInlineWrapper').classList.add('hidden');
+      document.getElementById('channelNewGroupInput').value = '';
+
+      if (channelId) {
+        const ch = findChannelAnywhere(channelId);
+        if (!ch) return;
+        document.getElementById('channelModalTitle').textContent = 'Edit Channel';
+        document.getElementById('editChannelId').value = ch.id;
+        document.getElementById('channelNameInput').value = ch.name || '';
+        document.getElementById('channelUrlInput').value = ch.url || '';
+        document.getElementById('channelLogoInput').value = ch.logo || '';
+        document.getElementById('channelTvgIdInput').value = ch.tvgId || '';
+        groupSelect.value = ch.group || 'Uncategorized';
+      } else {
+        document.getElementById('channelModalTitle').textContent = 'Add New Channel';
+        document.getElementById('editChannelId').value = '';
+        document.getElementById('channelNameInput').value = '';
+        document.getElementById('channelUrlInput').value = '';
+        document.getElementById('channelLogoInput').value = '';
+        document.getElementById('channelTvgIdInput').value = '';
+        if (state.viewMode === 'group' && state.activeGroup) {
+          groupSelect.value = state.activeGroup;
+        }
+      }
+
+      openModal('channelModal');
+    }
+
+    function handleChannelModalGroupSelect(val) {
+      document.getElementById('newGroupInlineWrapper').classList.toggle('hidden', val !== '__NEW__');
+    }
+
+    function saveChannelModal() {
+      const editId = document.getElementById('editChannelId').value;
+      const name = document.getElementById('channelNameInput').value.trim();
+      const url = document.getElementById('channelUrlInput').value.trim();
+      const logo = document.getElementById('channelLogoInput').value.trim();
+      const tvgId = document.getElementById('channelTvgIdInput').value.trim();
+      const selectedGroup = document.getElementById('channelGroupSelect').value;
+      const newGroupName = document.getElementById('channelNewGroupInput').value.trim();
+
+      if (!name || !url) {
+        showToast('Channel Name and Stream URL are required');
+        return;
+      }
+
+      const finalGroup = selectedGroup === '__NEW__' ? (newGroupName || 'Uncategorized') : selectedGroup;
+      const pl = getActivePlaylist();
+
+      if (editId) {
+        const ch = findChannelAnywhere(editId);
+        if (ch) {
+          ch.name = name;
+          ch.url = url;
+          ch.logo = logo;
+          ch.tvgId = tvgId;
+          ch.group = finalGroup;
+          showToast(`Updated "${name}"`);
+        }
+      } else if (pl) {
+        pl.channels.unshift({
+          id: uid('ch'),
+          name,
+          url,
+          logo,
+          tvgId,
+          group: finalGroup,
+          trashed: false
+        });
+        showToast(`Added "${name}" to ${finalGroup}`);
+      }
+
+      closeModal('channelModal');
+      renderAll();
+    }
+
+    // =========================================================================
+    // MOVE / COPY BETWEEN GROUPS & PLAYLISTS
+    // =========================================================================
+    function openSingleChannelTransferModal(channelId) {
+      state.transferContext = {
+        channelIds: [channelId],
+        sourceGroup: null
+      };
+      setupTransferModalUI('Move / Copy Channel', 'Transfer selected channel to another group or playlist.', 'move');
+    }
+
+    function openBulkTransferModal(preset) {
+      const ids = Array.from(state.selectedChannelIds);
+      if (ids.length === 0) return;
+
+      state.transferContext = {
+        channelIds: ids,
+        sourceGroup: null
+      };
+
+      const action = preset.startsWith('copy') ? 'copy' : 'move';
+      setupTransferModalUI(
+        `Transfer ${ids.length} Selected Channel(s)`,
+        `Choose destination playlist and group for the ${ids.length} selected channel(s).`,
+        action
+      );
+    }
+
+    function openTransferGroupModal(groupName, ev) {
+      if (ev) ev.stopPropagation();
+      const pl = getActivePlaylist();
+      if (!pl) return;
+      const ids = pl.channels
+        .filter(c => !c.trashed && (c.group || 'Uncategorized') === groupName)
+        .map(c => c.id);
+
+      state.transferContext = {
+        channelIds: ids,
+        sourceGroup: groupName
+      };
+
+      setupTransferModalUI(
+        `Move / Copy Group "${groupName}"`,
+        `Transfer all ${ids.length} channels from "${groupName}" to another group or playlist.`,
+        'move'
+      );
+    }
+
+    function setupTransferModalUI(title, desc, defaultAction) {
+      document.getElementById('transferModalTitle').textContent = title;
+      document.getElementById('transferModalDesc').textContent = desc;
+      document.getElementById('transferActionType').value = defaultAction;
+
+      const plSelect = document.getElementById('transferTargetPlaylist');
+      plSelect.innerHTML = state.playlists
+        .map(p => `<option value="${p.id}" class="bg-zinc-900">${escapeHtml(p.name)}</option>`)
+        .join('');
+      plSelect.value = state.activePlaylistId;
+
+      populateTransferGroupDropdown();
+      openModal('transferModal');
+    }
+
+    function populateTransferGroupDropdown() {
+      const targetPlId = document.getElementById('transferTargetPlaylist').value;
+      const targetPl = state.playlists.find(p => p.id === targetPlId);
+      const groupsMap = getGroupsMap(targetPl);
+      const groups = Array.from(groupsMap.keys()).sort();
+      if (state.transferContext && state.transferContext.sourceGroup && !groups.includes(state.transferContext.sourceGroup)) {
+        groups.unshift(state.transferContext.sourceGroup);
+      }
+      if (!groups.includes('Uncategorized')) groups.unshift('Uncategorized');
+
+      const grpSelect = document.getElementById('transferTargetGroup');
+      grpSelect.innerHTML = groups
+        .map(g => `<option value="${escapeAttr(g)}" class="bg-zinc-900">${escapeHtml(g)}</option>`)
+        .join('') + `<option value="__NEW__" class="bg-zinc-900 text-emerald-400">+ Create New Group...</option>`;
+
+      document.getElementById('transferNewGroupWrapper').classList.add('hidden');
+      document.getElementById('transferNewGroupInput').value = '';
+    }
+
+    function toggleTransferNewGroupInput(val) {
+      document.getElementById('transferNewGroupWrapper').classList.toggle('hidden', val !== '__NEW__');
+    }
+
+    function executeTransferModal() {
+      if (!state.transferContext) return;
+      const action = document.getElementById('transferActionType').value; // 'move' | 'copy'
+      const targetPlId = document.getElementById('transferTargetPlaylist').value;
+      const targetGroupSel = document.getElementById('transferTargetGroup').value;
+      const newGroupInput = document.getElementById('transferNewGroupInput').value.trim();
+
+      const finalGroup = targetGroupSel === '__NEW__' ? (newGroupInput || 'Uncategorized') : targetGroupSel;
+      const targetPl = state.playlists.find(p => p.id === targetPlId);
+      if (!targetPl) return;
+
+      const idSet = new Set(state.transferContext.channelIds);
+      let count = 0;
+
+      state.playlists.forEach(pl => {
+        const remaining = [];
+        pl.channels.forEach(ch => {
+          if (idSet.has(ch.id)) {
+            count++;
+            if (action === 'copy') {
+              remaining.push(ch);
+              targetPl.channels.push({
+                ...ch,
+                id: uid('ch'),
+                group: finalGroup,
+                trashed: false
+              });
+            } else {
+              // Move
+              if (pl.id === targetPl.id) {
+                ch.group = finalGroup;
+                remaining.push(ch);
+              } else {
+                targetPl.channels.push({
+                  ...ch,
+                  group: finalGroup,
+                  trashed: false
+                });
+              }
+            }
+          } else {
+            remaining.push(ch);
+          }
+        });
+        pl.channels = remaining;
+      });
+
+      state.selectedChannelIds.clear();
+      closeModal('transferModal');
+      showToast(`${action === 'copy' ? 'Copied' : 'Moved'} ${count} channel(s) to "${finalGroup}" in ${targetPl.name}`);
+      renderAll();
+    }
+
+    // =========================================================================
+    // MULTI-PLAYLIST MANAGEMENT (Import, Rename, Delete, Merge)
+    // =========================================================================
+    function renamePlaylistPrompt(playlistId, ev) {
+      if (ev) ev.stopPropagation();
+      const pl = state.playlists.find(p => p.id === playlistId);
+      if (!pl) return;
+      // Inline quick edit input in sidebar
+      const newName = promptRenameFallback(pl.name);
+    }
+
+    // Clean inline rename using Group modal structure
+    let renamingPlaylistId = null;
+    function renamePlaylistPrompt(playlistId, ev) {
+      if (ev) ev.stopPropagation();
+      const pl = state.playlists.find(p => p.id === playlistId);
+      if (!pl) return;
+      renamingPlaylistId = playlistId;
+      document.getElementById('groupModalTitle').textContent = 'Rename Playlist';
+      document.getElementById('groupModalOldName').value = '__PLAYLIST_RENAME__';
+      document.getElementById('groupModalInput').value = pl.name;
+      openModal('groupModal');
+    }
+
+    // Extend saveGroupModal to handle playlist rename as well
+    const _origSaveGroupModal = saveGroupModal;
+    saveGroupModal = function () {
+      const marker = document.getElementById('groupModalOldName').value;
+      if (marker === '__PLAYLIST_RENAME__') {
+        const newName = document.getElementById('groupModalInput').value.trim();
+        if (!newName) return;
+        const pl = state.playlists.find(p => p.id === renamingPlaylistId);
+        if (pl) {
+          pl.name = newName;
+          showToast(`Renamed playlist to "${newName}"`);
+        }
+        closeModal('groupModal');
+        renderAll();
+        return;
+      }
+      _origSaveGroupModal();
+    };
+
+    function deletePlaylist(playlistId, ev) {
+      if (ev) ev.stopPropagation();
+      if (state.playlists.length <= 1) {
+        showToast('At least one playlist must remain');
+        return;
+      }
+      const idx = state.playlists.findIndex(p => p.id === playlistId);
+      if (idx === -1) return;
+      const removedName = state.playlists[idx].name;
+      state.playlists.splice(idx, 1);
+      if (state.activePlaylistId === playlistId) {
+        state.activePlaylistId = state.playlists[0].id;
+      }
+      showToast(`Deleted playlist "${removedName}"`);
+      renderAll();
+    }
+
+    function openMergeModal() {
+      const listEl = document.getElementById('mergePlaylistsChecklist');
+      listEl.innerHTML = state.playlists.map(pl => {
+        const count = pl.channels.filter(c => !c.trashed).length;
+        return `
+          <label class="flex items-center justify-between px-3 py-2 rounded-lg theme-card border theme-border cursor-pointer theme-hover text-xs">
+            <span class="flex items-center gap-2">
+              <input type="checkbox" value="${pl.id}" checked class="merge-pl-check rounded bg-black border-zinc-700 text-emerald-500 focus:ring-0" />
+              <span class="font-medium">${escapeHtml(pl.name)}</span>
+            </span>
+            <span class="font-mono text-[10px] theme-text-muted">${count} ch</span>
+          </label>
+        `;
+      }).join('');
+      openModal('mergeModal');
+    }
+
+    function executePlaylistMerge() {
+      const checks = Array.from(document.querySelectorAll('.merge-pl-check:checked')).map(el => el.value);
+      if (checks.length < 2) {
+        showToast('Select at least 2 playlists to merge');
+        return;
+      }
+
+      const mergedName = document.getElementById('mergeNewPlaylistName').value.trim() || 'Merged Playlist.m3u';
+      const removeSources = document.getElementById('mergeRemoveSourcePlaylists').checked;
+
+      const combinedChannels = [];
+      checks.forEach(plId => {
+        const pl = state.playlists.find(p => p.id === plId);
+        if (pl) {
+          pl.channels.forEach(ch => {
+            if (!ch.trashed) {
+              combinedChannels.push({ ...ch, id: uid('ch') });
+            }
+          });
+        }
+      });
+
+      const newPl = {
+        id: uid('pl'),
+        name: mergedName,
+        channels: combinedChannels,
+        extraGroups: []
+      };
+
+      if (removeSources) {
+        state.playlists = state.playlists.filter(p => !checks.includes(p.id));
+      }
+
+      state.playlists.push(newPl);
+      state.activePlaylistId = newPl.id;
+      state.viewMode = 'all';
+
+      closeModal('mergeModal');
+      showToast(`Merged ${checks.length} playlists (${combinedChannels.length} channels)`);
+      renderAll();
+    }
+
+    // =========================================================================
+    // IMPORT M3U FILES / URL / RAW TEXT
+    // =========================================================================
+    let pendingUploadFiles = [];
+
+    function openImportModal() {
+      pendingUploadFiles = [];
+      document.getElementById('importFileInput').value = '';
+      document.getElementById('importFileNames').textContent = 'Each file can be imported separately';
+      document.getElementById('importUrlInput').value = '';
+      document.getElementById('importRawText').value = '';
+      document.getElementById('importPlaylistName').value = '';
+      openModal('importModal');
+    }
+
+    function toggleImportPlaylistNameInput() {
+      const mode = document.getElementById('importTargetMode').value;
+      document.getElementById('importCustomNameWrapper').classList.toggle('hidden', mode === 'append');
+    }
+
+    function handleFileInputSelection(input) {
+      pendingUploadFiles = Array.from(input.files || []);
+      const label = document.getElementById('importFileNames');
+      if (pendingUploadFiles.length > 0) {
+        label.textContent = `Selected ${pendingUploadFiles.length} file(s): ${pendingUploadFiles.map(f => f.name).join(', ')}`;
+      } else {
+        label.textContent = 'Each file can be imported separately';
+      }
+    }
+
+    async function fetchPlaylistFromUrl() {
+      const url = document.getElementById('importUrlInput').value.trim();
+      if (!url) {
+        showToast('Enter a valid M3U/M3U8 URL first');
+        return;
+      }
+      try {
+        showToast('Fetching remote playlist...');
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('HTTP error');
+        const text = await res.text();
+        document.getElementById('importRawText').value = text;
+        if (!document.getElementById('importPlaylistName').value) {
+          document.getElementById('importPlaylistName').value = url.split('/').pop() || 'Remote Playlist.m3u';
+        }
+        showToast('Loaded M3U content from URL! Click Decode & Import.');
+      } catch (e) {
+        showToast('CORS blocked direct fetch or URL offline. Paste raw M3U text instead.');
+      }
+    }
+
+    function loadDemoM3UText() {
+      document.getElementById('importRawText').value = `#EXTM3U
+#EXTINF:-1 tvg-id="cgtndoc" tvg-logo="https://upload.wikimedia.org/wikipedia/commons/thumb/8/81/CGTN_Documentary.svg/200px-CGTN_Documentary.svg.png" group-title="Documentary",CGTN Documentary HD
+https://news.cgtn.com/resource/live/document/cgtn-doc.m3u8
+#EXTINF:-1 tvg-id="redbull" tvg-logo="https://upload.wikimedia.org/wikipedia/en/thumb/f/f5/Red_Bull_TV_logo.svg/200px-Red_Bull_TV_logo.svg.png" group-title="Extreme Sports",Red Bull TV Live
+https://rbmn-live.akamaized.net/hls/live/590964/BoRB-AT/master.m3u8
+#EXTINF:-1 tvg-id="mux" group-title="Cinema",Big Buck Bunny HD (Duplicate Check)
+https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8`;
+      if (!document.getElementById('importPlaylistName').value) {
+        document.getElementById('importPlaylistName').value = 'Demo Extra Channels.m3u';
+      }
+    }
+
+    async function processImportSubmission() {
+      const mode = document.getElementById('importTargetMode').value; // 'new' | 'append'
+      const customName = document.getElementById('importPlaylistName').value.trim();
+      const rawText = document.getElementById('importRawText').value.trim();
+
+      let importedTotal = 0;
+
+      // 1. Process selected local files
+      if (pendingUploadFiles.length > 0) {
+        for (const file of pendingUploadFiles) {
+          const text = await file.text();
+          const channels = parseM3UContent(text);
+          importedTotal += channels.length;
+
+          if (mode === 'append') {
+            const activePl = getActivePlaylist();
+            if (activePl) activePl.channels.push(...channels);
+          } else {
+            const newPl = {
+              id: uid('pl'),
+              name: (pendingUploadFiles.length === 1 && customName) ? customName : file.name,
+              channels,
+              extraGroups: []
+            };
+            state.playlists.push(newPl);
+            state.activePlaylistId = newPl.id;
+          }
+        }
+      }
+
+      // 2. Process pasted raw M3U text
+      if (rawText) {
+        const channels = parseM3UContent(rawText);
+        importedTotal += channels.length;
+
+        if (mode === 'append') {
+          const activePl = getActivePlaylist();
+          if (activePl) activePl.channels.push(...channels);
+        } else {
+          const newPl = {
+            id: uid('pl'),
+            name: customName || `Imported List ${state.playlists.length + 1}.m3u`,
+            channels,
+            extraGroups: []
+          };
+          state.playlists.push(newPl);
+          state.activePlaylistId = newPl.id;
+        }
+      }
+
+      if (importedTotal === 0) {
+        showToast('No valid channels found. Select an .m3u file or paste #EXTM3U content.');
+        return;
+      }
+
+      closeModal('importModal');
+      state.viewMode = 'all';
+      showToast(`Successfully decoded & imported ${importedTotal} channel(s)!`);
+      renderAll();
+    }
+
+    // =========================================================================
+    // EXPORT FINAL .M3U PLAYLIST
+    // =========================================================================
+    function openExportModal() {
+      const pl = getActivePlaylist();
+      if (pl) {
+        const cleanBase = pl.name.replace(/\.m3u8?$/i, '');
+        document.getElementById('exportFilenameInput').value = `${cleanBase}_exported.m3u`;
+      }
+      refreshExportPreview();
+      openModal('exportModal');
+    }
+
+    function getChannelsForExport() {
+      const scope = document.getElementById('exportScopeSelect').value;
+      if (scope === 'current-view') {
+        return getDisplayedChannels().channels.filter(c => !c.trashed);
+      } else if (scope === 'all-playlists') {
+        const all = [];
+        state.playlists.forEach(p => {
+          p.channels.forEach(c => {
+            if (!c.trashed) all.push(c);
+          });
+        });
+        return all;
+      } else {
+        return getActiveChannels(false);
+      }
+    }
+
+    function refreshExportPreview() {
+      const channels = getChannelsForExport();
+      const m3uText = generateM3UContent(channels);
+      document.getElementById('exportPreviewTextarea').value = m3uText;
+      document.getElementById('exportStatsLabel').textContent = `Ready to export ${channels.length} clean channel(s)`;
+    }
+
+    function copyExportToClipboard() {
+      const text = document.getElementById('exportPreviewTextarea').value;
+      copyTextToClipboard(text, 'Raw M3U playlist copied to clipboard!');
+    }
+
+    function downloadM3UFile() {
+      const text = document.getElementById('exportPreviewTextarea').value;
+      let filename = document.getElementById('exportFilenameInput').value.trim() || 'playlist.m3u';
+      if (!filename.toLowerCase().endsWith('.m3u') && !filename.toLowerCase().endsWith('.m3u8')) {
+        filename += '.m3u';
+      }
+
+      const blob = new Blob([text], { type: 'audio/x-mpegurl;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      showToast(`Downloaded "${filename}"`);
+      closeModal('exportModal');
+    }
+
+    // =========================================================================
+    // THEME SWITCHER (True OLED / Slate Dark / Clean Light)
+    // =========================================================================
+    function cycleTheme() {
+      const html = document.documentElement;
+      const badge = document.getElementById('themeBadgeLabel');
+
+      if (state.theme === 'oled') {
+        state.theme = 'slate';
+        html.className = 'slate-theme';
+        badge.textContent = 'SLATE';
+        showToast('Theme: Slate Dark');
+      } else if (state.theme === 'slate') {
+        state.theme = 'light';
+        html.className = 'light-theme';
+        badge.textContent = 'LIGHT';
+        showToast('Theme: Minimal Light');
+      } else {
+        state.theme = 'oled';
+        html.className = 'oled';
+        badge.textContent = 'OLED';
+        showToast('Theme: True OLED Black');
+      }
+    }
+
+    // =========================================================================
+    // MODAL, MOBILE SIDEBAR, CLIPBOARD & TOAST UTILITIES
+    // =========================================================================
+    function openModal(id) {
+      document.getElementById(id).classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.add('hidden');
+    }
+
+    function openAboutModal() {
+      openModal('aboutModal');
+    }
+
+    function toggleMobileSidebar() {
+      const sb = document.getElementById('sidebar');
+      const backdrop = document.getElementById('sidebarBackdrop');
+      const isHidden = sb.classList.contains('-translate-x-full');
+      if (isHidden) {
+        sb.classList.remove('-translate-x-full');
+        backdrop.classList.remove('hidden');
+      } else {
+        sb.classList.add('-translate-x-full');
+        backdrop.classList.add('hidden');
+      }
+    }
+
+    function copyTextToClipboard(text, message = 'Copied!') {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        showToast(message);
+      } catch (e) {
+        showToast('Failed to copy');
+      }
+      document.body.removeChild(ta);
+    }
+
+    function showToast(msg) {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = 'px-3.5 py-2 rounded-xl theme-surface border border-emerald-500/40 text-xs font-medium shadow-2xl flex items-center gap-2 transition-all duration-200';
+      toast.innerHTML = `
+        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <span>${escapeHtml(msg)}</span>
+      `;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 200);
+      }, 2600);
+    }
+
+    function escapeHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function escapeAttr(str) {
+      return String(str || '')
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/"/g, '&quot;');
+    }
+
+    // Boot application
+    window.addEventListener('DOMContentLoaded', () => {
+      createInitialPlaylists();
+      renderAll();
+    });
+  </script>
+</body>
+</html>
